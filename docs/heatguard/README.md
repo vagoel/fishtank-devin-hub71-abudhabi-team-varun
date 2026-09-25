@@ -1,5 +1,11 @@
 # HeatGuard
 
+<p align="center">
+  <img src="assets/device1.png" alt="HeatGuard on a StickS3 worn on the wrist: cool-down countdown, WBGT 30.7 °C, online, hold B to talk" width="320">
+  <img src="assets/device2.png" alt="The StickS3 wearable with its strap, showing the HeatGuard cool-down screen" width="320">
+</p>
+
+
 A wrist wearable and site gateway that keep outdoor construction and labour-camp workers in the UAE safe from heat stress and falls. It runs heat-based work/rest cycles on the wrist, detects falls and unusual movement on the device, shows a live supervisor dashboard, gets a second opinion on each incident from Devin, answers workers' questions by voice in their own language, and sends WhatsApp escalations to the site medic.
 
 Hardware: M5Stack StickS3 (ESP32-S3, BMI270 IMU, mic + speaker, 135×240 screen). Tracks: Healthtech · Climate & Sustainability · Arabic-native AI · Security & Governance.

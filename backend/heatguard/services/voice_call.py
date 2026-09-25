@@ -10,14 +10,15 @@ Env:
   TWILIO_CALL_FROM   the Twilio number to call from (looked up from the account when unset)
   CALL_VOICE         Twilio <Say> voice, default Polly.Joanna-Neural
   CALL_ARABIC        "1" to repeat the key facts in Arabic (Polly.Zeina)
+  HEATGUARD_CALLS    "0" turns phone calls off (dry run)
 
 Two ways to talk:
-  gpt-live  (preferred) hand the call to live_call/call_service.py, which bridges the
-            phone audio to OpenAI gpt-live-1 so the responder can ask questions
-            ("which floor?", "is he breathing?") and get answers from the incident facts.
-            Needs LIVE_CALL_URL (e.g. http://127.0.0.1:8011) and LIVE_CALL_API_TOKEN.
+  gpt-live  (preferred) heatguard/livecall.py, in this same app, bridges the phone audio
+            to OpenAI gpt-live-1 so the responder can ask questions ("which floor?",
+            "is he breathing?") and get answers from the incident facts. Needs
+            OPENAI_API_KEY and HEATGUARD_PUBLIC_URL (Twilio's webhooks must reach us).
   say       Twilio reads the alert twice with <Say>. Used when gpt-live is not
-            configured or refuses the call.
+            configured (e.g. no HEATGUARD_PUBLIC_URL) or refuses the call.
 
 The From number is TWILIO_CALL_FROM / TWILIO_FROM_NUMBER, else the account's first
 voice number, else the number this account last called the recipient from (trial
@@ -25,6 +26,7 @@ accounts get a Twilio-owned trial number that is not listed as purchased).
 """
 import asyncio
 import itertools
+import logging
 import os
 import re
 import time
@@ -34,6 +36,9 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from .. import livecall
+
+log = logging.getLogger("heatguard.call")
 TZ = ZoneInfo("Asia/Dubai")
 API = "https://api.twilio.com/2010-04-01/Accounts/{sid}"
 FINAL = ("completed", "busy", "no-answer", "failed", "canceled")
@@ -70,19 +75,21 @@ class VoiceCall:
         self.voice = get("CALL_VOICE", "Polly.Joanna-Neural")
         self.arabic = get("CALL_ARABIC") == "1"
         self.frm = _e164(get("TWILIO_CALL_FROM") or get("TWILIO_FROM_NUMBER"))
-        self.live_url = get("LIVE_CALL_URL").rstrip("/")
-        self.live_token = get("LIVE_CALL_API_TOKEN")
+        self.off = get("HEATGUARD_CALLS", "1") == "0"
         self.mode = "say"
+        self.reason = "phone calls off (HEATGUARD_CALLS=0)" if self.off else None
         self.to = [n for n in (_e164(x) for x in (get("CALL_TO") or get("WHATSAPP_TO")).split(",")) if n]
         self._transport = transport
         self._ids = itertools.count(1)
         self._sent = {}
         self._worker_call = {}   # worker id -> last call time, so one emergency doesn't ring 5 times
-        self.reason = None
         self.account_type = None
 
     async def setup(self):
         """Find the Twilio number to call from and check trial restrictions."""
+        if self.off:
+            self.reason = "phone calls off (HEATGUARD_CALLS=0)"
+            return
         if not (self.sid and self.token):
             self.reason = "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN missing"
             return
@@ -104,13 +111,7 @@ class VoiceCall:
         except Exception as ex:
             self.reason = "Twilio lookup failed: %s" % type(ex).__name__
             return
-        if self.live_url and self.live_token:
-            try:
-                async with httpx.AsyncClient(timeout=5, transport=self._transport) as c:
-                    h = (await c.get(self.live_url + "/health")).json()
-                self.mode = "gpt-live" if h.get("ok") and h.get("calls_api") else "say"
-            except Exception:
-                self.mode = "say"
+        self.mode = "say" if livecall.missing_config() else "gpt-live"
         missing = []
         if not self.frm and self.mode == "say":
             missing.append("a Twilio number to call from (TWILIO_CALL_FROM)")
@@ -120,7 +121,8 @@ class VoiceCall:
 
     @property
     def enabled(self):
-        return bool(self.sid and self.token and self.to and not self.reason and (self.frm or self.mode == "gpt-live"))
+        return bool(not self.off and self.sid and self.token and self.to and not self.reason
+                    and (self.frm or self.mode == "gpt-live"))
 
     def describe(self):
         return {"provider": "twilio_voice", "mode": self.mode, "enabled": self.enabled, "from": mask(self.frm),
@@ -239,19 +241,15 @@ class VoiceCall:
         if self.mode == "gpt-live":
             facts = self.live_facts(a, worker, site)
             brief = "GPT-Live call. Worker %s %s. Location: %s." % (facts["worker"], facts["condition"], facts["location"])
-            async with httpx.AsyncClient(timeout=20, transport=self._transport) as c:
-                for to in list(todo):
-                    try:
-                        r = await c.post(self.live_url + "/calls", json=dict(facts, to=to),
-                                         headers={"X-Api-Key": self.live_token})
-                        j = r.json()
-                        if r.status_code < 300:
-                            n = self._note(a, to, j.get("status") or "queued", brief, sid=j.get("id"))
-                            n["provider"], n["live"] = "gpt-live", j.get("live") or ""
-                            notes.append(n)
-                            todo.remove(to)
-                    except Exception:
-                        pass  # falls through to the plain Twilio call below
+            for to in list(todo):
+                try:
+                    rec = await livecall.place_call(to, livecall.Incident(**facts), from_number=self.frm)
+                    n = self._note(a, to, rec.status or "queued", brief, sid=rec.id)
+                    n["provider"], n["live"] = "gpt-live", rec.live or ""
+                    notes.append(n)
+                    todo.remove(to)
+                except Exception as ex:  # falls through to the plain Twilio call below
+                    log.warning("gpt-live call to %s not placed: %s", mask(to), str(ex)[:160])
             if not todo or not self.frm:
                 return notes
         async with self._client() as c:
@@ -296,35 +294,33 @@ class VoiceCall:
                     return
 
     async def _follow_live(self, note, on_update, every, limit):
-        """Poll call_service.py for Twilio status, the GPT-Live leg and the running transcript."""
-        url = self.live_url + "/calls/" + note["provider_id"]
+        """Follow a GPT-Live call from its in-process CallRecord (livecall.py): Twilio status,
+        the GPT-Live leg and the running transcript. Twilio REST is polled as well, because
+        trial accounts get no status callbacks."""
         brief = note["text"].split("\n\nTranscript")[0]
         t0, last = time.time(), None
-        async with httpx.AsyncClient(timeout=10, transport=self._transport) as c:
+        async with self._client() as c:
             while time.time() - t0 < limit:
                 await asyncio.sleep(every)
-                try:
-                    j = (await c.get(url, headers={"X-Api-Key": self.live_token})).json()
-                except Exception:
-                    continue
-                if j.get("twilio_sid") and (j.get("status") in ("created", "queued", "") or not j.get("status")) \
-                        or (j.get("twilio_sid") and time.time() - t0 > 20 and j.get("status") not in FINAL):
-                    # trial accounts get no status callbacks, so ask Twilio directly
+                rec = livecall.CALLS.get(note["provider_id"])
+                if rec is None:
+                    return
+                if rec.twilio_sid and (rec.status in ("created", "queued", "")
+                                       or (time.time() - t0 > 20 and rec.status not in FINAL)):
                     try:
-                        tw = (await c.get(API.format(sid=self.sid) + "/Calls/%s.json" % j["twilio_sid"],
-                                          auth=(self.sid, self.token))).json()
-                        j["status"] = tw.get("status") or j.get("status")
+                        tw = (await c.get(API.format(sid=self.sid) + "/Calls/%s.json" % rec.twilio_sid)).json()
+                        rec.status = tw.get("status") or rec.status
                         if tw.get("duration"):
                             note["duration_s"] = int(tw["duration"])
                     except Exception:
                         pass
-                turns = ["%s: %s" % (x.get("speaker"), (x.get("text") or "").strip()) for x in j.get("transcript") or []]
-                sig = (j.get("status"), j.get("live"), len(turns), turns[-1] if turns else "")
+                turns = ["%s: %s" % (x.get("speaker"), (x.get("text") or "").strip()) for x in rec.transcript]
+                sig = (rec.status, rec.live, len(turns), turns[-1] if turns else "")
                 if sig != last:
                     last = sig
-                    note["status"], note["live"] = j.get("status") or note["status"], j.get("live") or ""
-                    note["error"] = j.get("error") or None
+                    note["status"], note["live"] = rec.status or note["status"], rec.live or ""
+                    note["error"] = rec.error or None
                     note["text"] = brief + ("\n\nTranscript (GPT-Live):\n" + "\n".join(turns) if turns else "")
                     on_update(note)
-                if j.get("status") in FINAL and j.get("live") not in ("connecting", "active"):
+                if rec.status in FINAL and rec.live not in ("connecting", "active"):
                     return

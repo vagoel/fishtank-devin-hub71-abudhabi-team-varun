@@ -1,36 +1,30 @@
-"""GPT-Live outbound alert calls.
+"""GPT-Live outbound alert calls, served by the telemetry app (APIRouter).
 
 Rings a phone through Twilio and lets OpenAI's gpt-live-1 do the talking. Twilio
-streams the call audio (G.711 u-law, 8 kHz) to /media on this service; each frame
-is relayed as-is to a GPT-Live WebSocket session opened with audio/pcmu, and the
-model's audio goes back the same way. No transcoding in either direction.
+streams the call audio (G.711 u-law, 8 kHz) to WS /twilio/media; each frame is relayed
+as-is to a GPT-Live WebSocket session opened with audio/pcmu, and the model's audio goes
+back the same way. No transcoding in either direction.
 
-    phone <-> Twilio <-> /media (this service) <-> wss://api.openai.com/v1/live/sessions
+    phone <-> Twilio <-> /twilio/media (this app) <-> wss://api.openai.com/v1/live/sessions
 
-Twilio fetches the call's TwiML from /twilio/voice/{id} when the callee answers.
+Twilio fetches the call's TwiML from /twilio/voice/{id} when the callee answers, reports
+progress to /twilio/status/{id} and falls through to /twilio/connect-done/{id}. If the
+GPT-Live leg fails, Twilio reads the alert with <Say>, so the message still gets delivered.
 
-If the GPT-Live leg fails, Twilio falls through to a <Say> that reads the alert,
-so the message still gets delivered.
+HeatGuard's escalation (services/voice_call.py) calls place_call() in-process.
 
-Env (read from ../.env, real env vars win):
-  OPENAI                 OpenAI project key (aliased to OPENAI_API_KEY)
-  TWILLIO_SID            Twilio account SID (aliased to TWILIO_ACCOUNT_SID)
-  TWILLIO_KEY            Twilio auth token (aliased to TWILIO_AUTH_TOKEN)
-  LIVE_CALL_PUBLIC_URL   public https URL that reaches this service (cloudflared / ngrok)
-  LIVE_CALL_API_TOKEN    X-Api-Key for POST /calls and GET /calls/{id}; unset = endpoints off
+Env (loaded by heatguard.env; real env vars win):
+  OPENAI_API_KEY, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+  HEATGUARD_PUBLIC_URL   public https base URL of this app (Cloud Run service URL) for Twilio
+  LIVE_CALL_API_TOKEN    X-Api-Key for POST /v1/calls and GET /v1/calls/{id}; unset = off
+  HEATGUARD_CALLS        "0" refuses every call (tests, local runs)
 Optional:
   TWILIO_FROM_NUMBER     caller ID in E.164; default is the account's first voice number
-  LIVE_CALL_TO           default callee in E.164 (falls back to CALL_TO / WHATSAPP_TO)
+  LIVE_CALL_TO           default callee for POST /v1/calls (falls back to CALL_TO / WHATSAPP_TO)
   LIVE_CALL_VOICE        GPT-Live voice, default marin
   LIVE_BACKEND_MODEL     Responses model GPT-Live delegates to, default gpt-5.6-luna
   LIVE_CALL_MAX_SECONDS  hard cap on call length, default 300
-  LIVE_CALL_PORT         default 8010
-
-Run from this directory:
-  ../.venv/bin/python call_service.py              # serve only
-  ../.venv/bin/python call_service.py --call-now   # serve and ring LIVE_CALL_TO once
 """
-import argparse
 import asyncio
 import hmac
 import json
@@ -42,52 +36,34 @@ import time
 from collections import OrderedDict, deque
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
 from urllib.parse import parse_qs
 from xml.sax.saxutils import escape
 
 import httpx
-import uvicorn
 import websockets
-from fastapi import FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from pydantic import BaseModel, Field
-
-ROOT = Path(__file__).resolve().parent.parent
-
-
-def load_env():
-    """Read the repo's .env (never written by this code). Real env vars win."""
-    aliases = {
-        "OPENAI": "OPENAI_API_KEY",
-        "TWILLIO_SID": "TWILIO_ACCOUNT_SID",
-        "TWILLIO_KEY": "TWILIO_AUTH_TOKEN",
-    }
-    p = ROOT / ".env"
-    if not p.exists():
-        return
-    for line in p.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        k = k.strip().removeprefix("export ").strip()
-        os.environ.setdefault(aliases.get(k, k), v.strip().strip('"').strip("'"))
-
-
-load_env()
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
 TWILIO_FROM = os.environ.get("TWILIO_FROM_NUMBER", "").strip()
-PUBLIC_URL = os.environ.get("LIVE_CALL_PUBLIC_URL", "").strip().rstrip("/")
+PUBLIC_URL = os.environ.get("HEATGUARD_PUBLIC_URL", "").strip().rstrip("/")
 API_TOKEN = os.environ.get("LIVE_CALL_API_TOKEN", "").strip()
 DEFAULT_TO = (os.environ.get("LIVE_CALL_TO") or os.environ.get("CALL_TO")
               or os.environ.get("WHATSAPP_TO", "")).split(",")[0].strip()
 VOICE = os.environ.get("LIVE_CALL_VOICE", "marin")
 BACKEND_MODEL = os.environ.get("LIVE_BACKEND_MODEL", "gpt-5.6-luna")
 MAX_CALL_S = int(os.environ.get("LIVE_CALL_MAX_SECONDS", "300"))
-PORT = int(os.environ.get("LIVE_CALL_PORT", "8010"))
+CALLS_OFF = os.environ.get("HEATGUARD_CALLS", "1") == "0"
 
 LIVE_MODEL = "gpt-live-1"
 LIVE_URL = "wss://api.openai.com/v1/live/sessions"
@@ -214,7 +190,7 @@ def missing_config() -> list[str]:
         "OPENAI_API_KEY": OPENAI_API_KEY,
         "TWILIO_ACCOUNT_SID": TWILIO_SID,
         "TWILIO_AUTH_TOKEN": TWILIO_TOKEN,
-        "LIVE_CALL_PUBLIC_URL": PUBLIC_URL,
+        "HEATGUARD_PUBLIC_URL": PUBLIC_URL,
     }
     return [k for k, v in need.items() if not v]
 
@@ -238,7 +214,7 @@ def say_alert(rec: CallRecord) -> str:
 def twiml(rec: CallRecord) -> str:
     # Twilio requests the <Connect> action URL when the stream ends or fails to start;
     # the trailing <Say> only runs if Twilio skips <Connect> altogether.
-    stream_url = re.sub(r"^http", "ws", PUBLIC_URL) + "/media"
+    stream_url = re.sub(r"^http", "ws", PUBLIC_URL) + "/twilio/media"
     return (
         f'<Response><Connect action="{attr(f"{PUBLIC_URL}/twilio/connect-done/{rec.id}")}">'
         f'<Stream url="{attr(stream_url)}">'
@@ -260,13 +236,17 @@ async def caller_id(http: httpx.AsyncClient) -> str:
     return TWILIO_FROM
 
 
-async def place_call(to: str, incident: Incident) -> CallRecord:
+async def place_call(to: str, incident: Incident, from_number: str | None = None) -> CallRecord:
+    """Ring `to` now. `from_number` overrides the caller ID (voice_call.py finds one that also
+    works on trial accounts)."""
+    if CALLS_OFF:
+        raise CallError(503, "phone calls are off (HEATGUARD_CALLS=0)")
     missing = missing_config()
     if missing:
         raise CallError(503, "missing config: " + ", ".join(missing))
     to = normalize(to)
     async with httpx.AsyncClient(timeout=15, auth=(TWILIO_SID, TWILIO_TOKEN)) as http:
-        from_number = await caller_id(http)
+        from_number = from_number or await caller_id(http)
         if not from_number:
             raise CallError(503, "no voice number on the Twilio account; get one in the console "
                                  "or set TWILIO_FROM_NUMBER")
@@ -480,7 +460,7 @@ class LiveBridge:
 
 # --- HTTP -------------------------------------------------------------------
 
-app = FastAPI(title="GPT-Live alert calls")
+router = APIRouter()
 
 
 class CallRequest(BaseModel):
@@ -497,12 +477,13 @@ def require_token(x_api_key: str | None):
         raise HTTPException(401, "bad X-Api-Key")
 
 
-@app.get("/health")
-def health():
+def status() -> dict:
+    """Readiness for the dashboard's call pill (no secrets)."""
     missing = missing_config()
     return {
-        "ok": not missing,
+        "ok": not missing and not CALLS_OFF,
         "missing": missing,
+        "calls_off": CALLS_OFF,
         "model": LIVE_MODEL,
         "voice": VOICE,
         "backend_model": BACKEND_MODEL,
@@ -511,7 +492,7 @@ def health():
     }
 
 
-@app.post("/calls")
+@router.post("/v1/calls", tags=["calls"])
 async def create_call(req: CallRequest | None = None, x_api_key: str | None = Header(None)):
     require_token(x_api_key)
     req = req or CallRequest()
@@ -523,7 +504,7 @@ async def create_call(req: CallRequest | None = None, x_api_key: str | None = He
     return rec.public()
 
 
-@app.get("/calls/{call_id}")
+@router.get("/v1/calls/{call_id}", tags=["calls"])
 def get_call(call_id: str, x_api_key: str | None = Header(None)):
     require_token(x_api_key)
     rec = CALLS.get(call_id)
@@ -532,14 +513,14 @@ def get_call(call_id: str, x_api_key: str | None = Header(None)):
     return rec.public()
 
 
-@app.post("/twilio/voice/{call_id}")
+@router.post("/twilio/voice/{call_id}", include_in_schema=False)
 async def twilio_voice(call_id: str):
     """TwiML Twilio fetches once the callee answers."""
     rec = CALLS.get(call_id)
     return Response(twiml(rec) if rec else "<Response><Hangup/></Response>", media_type="application/xml")
 
 
-@app.post("/twilio/connect-done/{call_id}")
+@router.post("/twilio/connect-done/{call_id}", include_in_schema=False)
 async def twilio_connect_done(call_id: str, request: Request):
     """<Connect> finished. Hang up after a GPT-Live conversation, else read the alert."""
     rec = CALLS.get(call_id)
@@ -554,7 +535,7 @@ async def twilio_connect_done(call_id: str, request: Request):
     return Response("<Response><Hangup/></Response>", media_type="application/xml")
 
 
-@app.post("/twilio/status/{call_id}")
+@router.post("/twilio/status/{call_id}", include_in_schema=False)
 async def twilio_status(call_id: str, request: Request):
     rec = CALLS.get(call_id)
     if rec:
@@ -566,7 +547,7 @@ async def twilio_status(call_id: str, request: Request):
     return Response(status_code=204)
 
 
-@app.websocket("/media")
+@router.websocket("/twilio/media")
 async def media(ws: WebSocket):
     await ws.accept()
     try:
@@ -578,34 +559,3 @@ async def media(ws: WebSocket):
             await ws.close()
         return
     await LiveBridge(ws, rec, stream_sid).run()
-
-
-# --- entry point ------------------------------------------------------------
-
-async def serve(args):
-    server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port, log_level="info"))
-    task = asyncio.create_task(server.serve())
-    if args.call_now:
-        while not server.started and not task.done():
-            await asyncio.sleep(0.1)
-        if server.started:
-            try:
-                await place_call(args.to, Incident())
-            except CallError as e:
-                log.error("call not placed: %s", e)
-    await task
-
-
-def main():
-    ap = argparse.ArgumentParser(description="GPT-Live outbound alert call service")
-    ap.add_argument("--call-now", action="store_true", help="ring --to once the server is up")
-    ap.add_argument("--to", default=DEFAULT_TO, help=f"number to ring (default {DEFAULT_TO})")
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=PORT)
-    args = ap.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    asyncio.run(serve(args))
-
-
-if __name__ == "__main__":
-    main()

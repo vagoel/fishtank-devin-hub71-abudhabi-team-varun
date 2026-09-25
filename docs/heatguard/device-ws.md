@@ -98,3 +98,12 @@ One question at a time per device. The server runs the same GPT-Live assistant a
 `POST /v1/ingest/frames` keeps working for any device or the team simulator
 (`backend/scripts/simulate_device.py`). Frames that arrive over HTTP also reach HeatGuard's
 real-time pipeline; those devices just cannot receive commands or use voice.
+
+## Server notes (backend/heatguard/device_ws.py)
+
+- `device_id` is required (missing or longer than 128 chars: close 4400). A frame whose
+  `device_id` differs from the socket's is rejected with `{"cmd":"error","what":"frames",...}`;
+  a `k` message's `id` is taken from the socket.
+- A second socket for the same `device_id` replaces the first, which is closed with 4409.
+- The 4401 close happens before accept, so a real client sees the handshake refused (HTTP 403).
+- On server shutdown sockets are closed with 1012; reconnect with the usual backoff.

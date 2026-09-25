@@ -168,3 +168,13 @@ GET /admin                                           # admin dashboard (HTML)
 
 See `.env.example`. Defaults are tuned for a single free-tier Postgres: 200 ms flush
 interval, 10k-row flushes, 500k-row queue ceiling, 20k buffered points per device.
+
+## HeatGuard (same app)
+
+`heatguard/` is mounted into this app (`telemetry/main.py`): the HeatGuard dashboard at `/`, its
+API and SSE under `/api/v1/*`, the wearable WebSocket `/v1/device/ws`
+([contract](../docs/heatguard/device-ws.md)), incidents under `/v1/incidents`
+([contract](../docs/heatguard/incidents.md)) and Twilio call webhooks under `/twilio/*`.
+Frames posted to `/v1/ingest/frames` also feed HeatGuard's live view. HeatGuard settings come
+from env vars or `backend/.env` (see `heatguard/.env.example`); deploy notes in
+[`deploy/CLOUD_RUN.md`](deploy/CLOUD_RUN.md). Tests keep HeatGuard offline (`tests/conftest.py`).

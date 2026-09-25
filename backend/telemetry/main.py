@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 
-from heatguard import incidents as heatguard_incidents  # HeatGuard: incidents API
+import heatguard  # HeatGuard: dashboard, device WebSocket, incidents, voice, phone calls
 
 from .buffer import BufferStore
 from .config import settings
@@ -50,8 +50,10 @@ async def lifespan(app: FastAPI):
         pool, writer, BufferStore(settings.ring_buffer_size), registry
     )
     try:
+        await heatguard.startup(app.state.service)  # HeatGuard: its background tasks
         yield
     finally:
+        await heatguard.shutdown()  # HeatGuard: stop before the writer and pool go away
         registry_task.cancel()
         with suppress(asyncio.CancelledError):
             await registry_task
@@ -152,6 +154,8 @@ async def ingest_frames(payload: FramePayload = Frames, svc: TelemetryService = 
         n = svc.ingest_frames(frames)
     except QueueFull as exc:
         raise _queue_full(exc) from exc
+    # HeatGuard: HTTP devices show up live too (chart, fall traces, wrist temperature)
+    heatguard.core.on_frames(frames, transport="http")
     return IngestResponse(accepted=n, queued_rows=svc.writer.pending_rows, frames=len(frames))
 
 
@@ -288,5 +292,9 @@ async def stats(svc: TelemetryService = Service):
 
 
 # -- HeatGuard ----------------------------------------------------------------------------
-# Incidents API (heatguard.incident.v1, docs/heatguard/incidents.md), stored in `incidents`.
-app.include_router(heatguard_incidents.router)
+# Dashboard at /, /api/v1/* + SSE, device WebSocket /v1/device/ws (docs/heatguard/device-ws.md)
+app.include_router(heatguard.router)
+# Phone calls: Twilio webhooks /twilio/* and media stream, optional /v1/calls
+app.include_router(heatguard.livecall.router)
+# Incidents API (heatguard.incident.v1, docs/heatguard/incidents.md), stored in `incidents`
+app.include_router(heatguard.incidents.router)

@@ -69,12 +69,21 @@ async def on_incident(incident: dict, created: bool, previous: dict | None) -> d
     return None
 
 
+def prepare(inc: IncidentIn) -> IncidentIn:
+    """Called before a POSTed incident is stored, to fill in defaults (person, location)."""
+    return inc
+
+
 _hook = on_incident
+_prepare = prepare
 
 
-def set_hook(fn) -> None:
-    global _hook
+def set_hook(fn, prepare_fn=None) -> None:
+    """HeatGuard's Core registers here: `fn` raises/updates the alert and escalates,
+    `prepare_fn` fills person and location from the device's worker."""
+    global _hook, _prepare
     _hook = fn or on_incident
+    _prepare = prepare_fn or prepare
 
 
 # -- storage ----------------------------------------------------------------------------
@@ -104,8 +113,15 @@ returning *
 """
 
 
+_ASCII_ONLY = False  # a SQL_ASCII database (some local Postgres installs) can't hold \u escapes
+
+
 def _dumps(v) -> str | None:
-    return None if v is None else json.dumps(v, default=str)
+    if v is None:
+        return None
+    if _ASCII_ONLY:
+        return json.dumps(v, default=str, ensure_ascii=False).encode("ascii", "replace").decode()
+    return json.dumps(v, default=str)
 
 
 def row_to_dict(row) -> dict:
@@ -133,14 +149,26 @@ def occurred_at(inc: IncidentIn, registry=None) -> datetime | None:
     return None
 
 
-async def record(pool, inc: IncidentIn, registry=None) -> tuple[dict, bool]:
-    """Create or update one incident, run the hook, return (stored incident, created)."""
+async def record(
+    pool, inc: IncidentIn, registry=None, link: dict | None = None
+) -> tuple[dict, bool]:
+    """Create or update one incident and return (stored incident, created).
+
+    POSTed incidents run the hook (alert + escalation). HeatGuard's own detections pass
+    `link={"alert_id", "escalated"}` instead: their alert already exists."""
+    global _ASCII_ONLY
     async with pool.acquire() as conn:
+        _ASCII_ONLY = conn.get_settings().server_encoding == "SQL_ASCII"
         async with conn.transaction():
             prev = await conn.fetchrow(
                 "select * from incidents where incident_id = $1 for update", inc.incident_id
             ) if inc.incident_id else None
             if prev is None:
+                if link is None:
+                    try:
+                        inc = _prepare(inc)  # person / location from the device's worker
+                    except Exception:  # noqa: BLE001 - defaults are best effort
+                        log.exception("incident prepare failed")
                 iid = inc.incident_id or f"{inc.device_id}-{uuid.uuid4().hex[:12]}"
                 status = inc.status or "suspected"
                 row = await conn.fetchrow(
@@ -164,11 +192,14 @@ async def record(pool, inc: IncidentIn, registry=None) -> tuple[dict, bool]:
                 )
     incident = row_to_dict(row)
     previous = row_to_dict(prev) if prev is not None else None
-    try:
-        extra = await _hook(incident, created, previous)
-    except Exception:  # noqa: BLE001 - storing the incident must not fail because of the hook
-        log.exception("incident hook failed for %s", incident["incident_id"])
-        extra = None
+    if link is not None:
+        extra = link
+    else:
+        try:
+            extra = await _hook(incident, created, previous)
+        except Exception:  # noqa: BLE001 - storing the incident must not fail because of the hook
+            log.exception("incident hook failed for %s", incident["incident_id"])
+            extra = None
     if extra:
         alert_id = extra.get("alert_id") or incident.get("alert_id")
         escalated = sorted(set(incident["escalated"]) | set(extra.get("escalated") or []))

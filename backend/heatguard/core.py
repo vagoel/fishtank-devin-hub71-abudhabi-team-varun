@@ -1,101 +1,75 @@
-"""HeatGuard server.
+"""HeatGuard core: heat engine, alert lifecycle, the simulated fleet, Devin incident analysis,
+WhatsApp and phone escalation, the voice assistant hooks, the dashboard API and SSE.
 
-Wearables stream over WiFi (UDP) or USB. This process owns the heat engine,
-alert lifecycle, the simulated fleet, Devin incident analysis, WhatsApp
-escalation, the voice assistant relay and the dashboard API.
-
-Run from this directory:  ../.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+Runs inside the telemetry app (backend/telemetry/main.py): `router` is mounted there and
+`startup()` / `shutdown()` run in its lifespan. Wearables reach it over the device WebSocket
+(heatguard/device_ws.py) or as sticks3.telemetry.v1 frames on POST /v1/ingest/frames. The UDP
+gateway, discovery beacon, USB serial bridge and TCP voice port only start with HEATGUARD_LAN=1.
 """
 import asyncio
 import json
+import logging
 import os
 import random
 import time
+import uuid
 from collections import OrderedDict, deque
-from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, StreamingResponse
 
-ROOT = Path(__file__).resolve().parent.parent
+from . import devin as devin_mod
+from . import heat, sim
+from . import incidents as incidents_mod
+from .gateway import UDP_PORT, SerialBridge, UdpGateway, beacon, lan_ips
+
+log = logging.getLogger("heatguard")
+
 STATIC = Path(__file__).resolve().parent / "static"
 
 
-def load_env():
-    """Read the repo's .env (never written by this code). Real env vars win."""
-    aliases = {"DEVIN": "DEVIN_API_KEY", "OPENAI": "OPENAI_API_KEY",
-               "TWILLIO_SID": "TWILIO_ACCOUNT_SID", "TWILIO_SID": "TWILIO_ACCOUNT_SID",
-               "TWILLIO_KEY": "TWILIO_AUTH_TOKEN", "TWILIO_KEY": "TWILIO_AUTH_TOKEN"}
-    p = ROOT / ".env"
-    if not p.exists():
-        return
-    for line in p.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        k = k.strip().removeprefix("export ").strip()
-        os.environ.setdefault(aliases.get(k, k), v.strip().strip('"').strip("'"))
-
-
-load_env()
-
-
-def twilio_sandbox_sender():
+async def twilio_sandbox_sender(c):
     """The WhatsApp number our recipients joined, read from their inbound 'join' messages.
-    Twilio gives each account its own sandbox number, so a hardcoded default is often wrong."""
-    sid, tok = os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"]
+    Twilio gives each account its own sandbox number, so there is no safe default."""
+    sid = os.environ["TWILIO_ACCOUNT_SID"]
     for to in filter(None, (x.strip() for x in os.environ.get("WHATSAPP_TO", "").split(","))):
         try:
-            r = httpx.get("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json" % sid,
-                          params={"From": "whatsapp:" + to, "PageSize": 1}, auth=(sid, tok), timeout=6)
+            r = await c.get("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json" % sid,
+                            params={"From": "whatsapp:" + to, "PageSize": 1})
             msgs = r.json().get("messages") or []
             if msgs:
                 return msgs[0]["to"]
         except Exception:
             pass
-    return "whatsapp:+14155238886"
+    return None
 
 
-def twilio_account_type():
-    sid, tok = os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"]
+async def twilio_account_type(c):
     try:
-        return httpx.get("https://api.twilio.com/2010-04-01/Accounts/%s.json" % sid,
-                         auth=(sid, tok), timeout=6).json().get("type")
+        r = await c.get("https://api.twilio.com/2010-04-01/Accounts/%s.json" % os.environ["TWILIO_ACCOUNT_SID"])
+        return r.json().get("type")
     except Exception:
         return None
 
 
-# Twilio credentials alone are enough to pick Twilio for WhatsApp -- except on a trial
-# account, which can only send Twilio's own templates, so free-text alerts stay a dry run.
-if os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN"):
-    if "WHATSAPP_PROVIDER" not in os.environ:
-        trial = twilio_account_type() == "Trial" and not os.environ.get("TWILIO_CONTENT_SID")
-        os.environ["WHATSAPP_PROVIDER"] = "dryrun" if trial else "twilio"
-    if not os.environ.get("TWILIO_WHATSAPP_FROM"):
-        os.environ["TWILIO_WHATSAPP_FROM"] = twilio_sandbox_sender()
-
-import devin as devin_mod  # noqa: E402  (reads env at import time)
-import heat  # noqa: E402
-import sim  # noqa: E402
-from gateway import UDP_PORT, SerialBridge, UdpGateway, beacon, lan_ips  # noqa: E402
-
 try:
-    from services.whatsapp import WhatsApp
-except Exception:  # service not present yet
+    from .services.whatsapp import WhatsApp
+except Exception:  # service not present
     WhatsApp = None
 try:
-    from services.assistant import Assistant
+    from .services.assistant import Assistant
 except Exception:
     Assistant = None
 try:
-    from services.voice_call import VoiceCall
+    from .services.voice_call import VoiceCall
 except Exception:
     VoiceCall = None
 
+LAN = os.environ.get("HEATGUARD_LAN", "0") == "1"             # UDP gateway, beacon, USB serial, TCP voice
+WEATHER = os.environ.get("HEATGUARD_WEATHER", "1") != "0"      # Open-Meteo; 0 = fallback values
 HTTP_PORT = int(os.environ.get("PORT", "8000"))
 FLEET_SIZE = int(os.environ.get("HEATGUARD_FLEET", "1200"))
 AUTO_DEVIN = os.environ.get("HEATGUARD_AUTO_DEVIN", "1") != "0"
@@ -132,6 +106,14 @@ TITLES = {"fall": "Fall detected", "impact": "Hard impact", "tremor": "Unusual s
           "erratic": "Erratic movement", "inactivity": "No movement", "sos": "SOS pressed",
           "unwell": "Feeling unwell"}
 WINDOW_TYPES = ("fall", "impact", "tremor", "erratic", "inactivity", "sos")
+# HeatGuard alert type <-> incident type (heatguard.incident.v1)
+INCIDENT_TYPE = {"fall": "fall", "sos": "manual_sos", "tremor": "tremor", "erratic": "other",
+                 "inactivity": "inactivity", "unwell": "unwell", "impact": "impact",
+                 "heat_critical": "heat_stroke"}
+ALERT_TYPE = {"fall": "fall", "heat_stroke": "heat_critical", "manual_sos": "sos", "tremor": "tremor",
+              "inactivity": "inactivity", "unwell": "unwell", "impact": "impact", "other": "other"}
+INCIDENT_TITLES = {"heat_stroke": "Suspected heat stroke", "manual_sos": "SOS", "other": "Incident reported"}
+INCIDENT_CLOSED = ("worker_ok", "cancelled", "resolved")
 
 
 def public(d):
@@ -162,18 +144,57 @@ class Core:
         self.voice = OrderedDict()
         self.notifications = OrderedDict()
         self.devin = devin_mod.Devin()
-        try:
-            self.whatsapp = WhatsApp() if WhatsApp else None
-        except Exception as e:
-            print("whatsapp service failed to load:", e)
-            self.whatsapp = None
+        self.whatsapp = None          # created in setup_escalation() at startup
         self.caller = VoiceCall() if VoiceCall else None
         self.assistant = None
         self.udp = UdpGateway(self.on_device_msg)
         self.bridge = None
         self.ips = []
         self._last_auto_devin = 0.0
+        self._jobs = set()            # background jobs (Devin polling, escalation, trace capture)
+        self.service = None           # the telemetry app's TelemetryService (incidents table)
+        self._incident_lock = None
         self.compute_site()
+
+    def spawn(self, coro):
+        """Run a background job on the app's event loop; shutdown() cancels what is left."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:          # called from another thread
+            if self.loop is None or self.loop.is_closed():
+                coro.close()
+                return None
+            return asyncio.run_coroutine_threadsafe(coro, self.loop)
+        t = loop.create_task(coro)
+        self._jobs.add(t)
+        t.add_done_callback(self._jobs.discard)
+        return t
+
+    async def setup_escalation(self):
+        """Pick the WhatsApp provider/sender and the call's From number (Twilio lookups)."""
+        if os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN"):
+            auth = (os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
+            async with httpx.AsyncClient(timeout=6, auth=auth) as c:
+                # Credentials alone pick Twilio for WhatsApp, except on a trial account, which can
+                # only send Twilio's own templates: free-text alerts stay a dry run there.
+                if "WHATSAPP_PROVIDER" not in os.environ:
+                    trial = await twilio_account_type(c) == "Trial" and not os.environ.get("TWILIO_CONTENT_SID")
+                    os.environ["WHATSAPP_PROVIDER"] = "dryrun" if trial else "twilio"
+                if not os.environ.get("TWILIO_WHATSAPP_FROM"):
+                    frm = await twilio_sandbox_sender(c)
+                    if frm:
+                        os.environ["TWILIO_WHATSAPP_FROM"] = frm
+        try:
+            self.whatsapp = WhatsApp() if WhatsApp else None
+        except Exception as e:
+            log.error("whatsapp service failed to load: %s", e)
+            self.whatsapp = None
+        if self.caller:
+            try:
+                await self.caller.setup()
+            except Exception as e:
+                log.error("call service setup failed: %s", e)
+        self.publish("config", self.config_view())
 
     # ------------------------------------------------------------ pub/sub
     def publish(self, event, data):
@@ -240,6 +261,9 @@ class Core:
             "_ring": deque(maxlen=50 * RING_S), "_act": 0.0, "_alerts": [], "_seqs": deque(maxlen=300),
             "_pending": [], "_viol": 0, "_viol_sent": False, "_offline_alert": None, "_plan_at": 0.0,
             "_temp_ema": None, "_stop_since": 0.0, "_call_since": 0.0, "_temp_stop": False, "_temp_called": False,
+            "configuration": None, "_ip": None,
+            # telemetry frames: boot, last sample, last sensor values, next imu publish time
+            "_boot": None, "_last_t": None, "_last_acc": None, "_last_gyr": None, "_imu_next": None,
         }
         self.live[did] = w
         self.by_wid[wid] = w
@@ -381,12 +405,29 @@ class Core:
     # ------------------------------------------------------------ device transport
     def send_cmd(self, w, obj):
         t = w.get("_transport")
-        if t == "wifi":
+        if t == "ws":                       # device WebSocket: queued on that device's socket
+            if w["_addr"] is not None:
+                w["_addr"].send(obj)
+        elif t == "wifi":
             self.udp.send(w["_addr"], obj)
         elif t == "serial" and self.bridge:
             self.bridge.send(obj)
-        elif t == "http":
+        elif t == "http":                   # HTTP frames have no downlink; kept for the record
             w["_pending"] = (w["_pending"] + [obj])[-20:]
+
+    @staticmethod
+    def _socket_open(w):
+        return w.get("_transport") == "ws" and bool(getattr(w.get("_addr"), "open", False))
+
+    def _heard(self, w, transport, addr, now):
+        """A live worker's device was heard from: last seen, transport, back online."""
+        was_offline = now - w["_last_seen"] > OFFLINE_S
+        if transport != "http" or not self._socket_open(w):   # an open socket keeps the downlink
+            w["_transport"], w["_addr"] = transport, addr
+            w["transport"] = transport
+        w["_last_seen"] = now
+        if was_offline:
+            self.on_back_online(w)
 
     def send_plan(self, w):
         z = self.heat_for_zone(w.get("zone"))
@@ -403,25 +444,82 @@ class Core:
         if not did:
             return
         w = self.live.get(did) or self.add_live(did)
-        now = time.time()
-        was_offline = now - w["_last_seen"] > OFFLINE_S
-        w["_last_seen"], w["_transport"], w["_addr"] = now, transport, addr
-        w["transport"] = transport
-        if was_offline:
-            self.on_back_online(w)
+        self._heard(w, transport, addr, time.time())
         k = obj.get("k")
         if k == "hello":
             w["_params"] = obj.get("params") or {}
             w["_fw"] = obj.get("fw")
-        elif k == "s":
-            t0, dt = int(obj.get("t0", 0)), int(obj.get("dt", 20))
-            samples = [[t0 + i * dt] + list(row) for i, row in enumerate(obj.get("d") or [])]
-            w["_ring"].extend(samples)
-            self.publish("imu", {"id": w["id"], "samples": samples})
+            w["_ip"] = obj.get("ip")
+        # Raw IMU is no longer a HeatGuard message: telemetry now comes as sticks3.telemetry.v1
+        # frames (on_frames). Old handler kept for reference:
+        # elif k == "s":
+        #     t0, dt = int(obj.get("t0", 0)), int(obj.get("dt", 20))
+        #     samples = [[t0 + i * dt] + list(row) for i, row in enumerate(obj.get("d") or [])]
+        #     w["_ring"].extend(samples)
+        #     self.publish("imu", {"id": w["id"], "samples": samples})
         elif k == "st":
             self.on_status(w, obj)
         elif k == "ev":
             self.on_device_event(w, obj)
+
+    IMU_PUBLISH_MS = 40          # SSE imu: at most one sample per 40 ms of device time (25 Hz)
+
+    def on_frames(self, frames, transport, addr=None):
+        """sticks3.telemetry.v1 frames (device WebSocket or POST /v1/ingest/frames), already
+        validated and stored by the telemetry service, into the live pipeline: worker, ring
+        buffer for fall traces, SSE imu at <= 25 Hz, wrist-temperature tiers. Never raises."""
+        try:
+            by_dev = {}
+            for f in frames:
+                by_dev.setdefault(f.device_id, []).append(f)
+            now = time.time()
+            for did, fs in by_dev.items():
+                w = self.live.get(did) or self.add_live(did)
+                self._heard(w, transport, addr, now)
+                self._frames(w, fs)
+        except Exception:
+            log.exception("heatguard: on_frames failed")
+
+    def _frames(self, w, fs):
+        if all(f.boot_id == fs[0].boot_id for f in fs):
+            fs = sorted(fs, key=lambda f: f.read_time_us)
+        ring, pub, temps = w["_ring"], [], []
+        for f in fs:
+            if f.boot_id != w["_boot"]:               # new boot: its clock restarts near zero
+                w["_boot"], w["_last_t"], w["_imu_next"] = f.boot_id, None, None
+                ring.clear()
+            if f.configuration is not None:
+                w["configuration"] = f.configuration.model_dump(exclude_none=True)
+            imu = f.imu
+            if f.fresh.temperature and imu.die_temperature_c is not None:
+                temps.append(imu.die_temperature_c)
+            # A sensor that is not fresh repeats its last value.
+            if f.fresh.accelerometer and imu.acceleration_g is not None:
+                w["_last_acc"] = imu.acceleration_g.as_tuple()
+            if f.fresh.gyroscope and imu.angular_velocity_dps is not None:
+                w["_last_gyr"] = imu.angular_velocity_dps.as_tuple()
+            acc = w["_last_acc"] or (imu.acceleration_g.as_tuple() if imu.acceleration_g else None)
+            gyr = w["_last_gyr"] or (imu.angular_velocity_dps.as_tuple() if imu.angular_velocity_dps
+                                     else (0.0, 0.0, 0.0))
+            t = f.read_time_us / 1000
+            if acc is None or (w["_last_t"] is not None and t <= w["_last_t"]):
+                continue                               # no accel yet, or a duplicate / late frame
+            w["_last_t"] = t
+            s = [t, *acc, *gyr]
+            ring.append(s)
+            nxt = w["_imu_next"]
+            if nxt is None or t >= nxt:
+                pub.append(s)
+                nxt = t if nxt is None else nxt
+                while nxt <= t:
+                    nxt += self.IMU_PUBLISH_MS
+                w["_imu_next"] = nxt
+        if pub:
+            self.publish("imu", {"id": w["id"], "samples": pub})
+        for c in temps:
+            w["device_temp_c"] = c
+            self.temp_rules(w, float(c))
+        w["updated"] = time.time()
 
     def on_back_online(self, w):
         a = w.get("_offline_alert")
@@ -477,7 +575,8 @@ class Core:
                                    detail={"chip_c": chip, "wrist_c": est, "line_c": CHIP_STOP - CHIP_OFFSET})
                 w["_temp_stop_alert"] = a["id"]
                 self.send_cmd(w, {"cmd": "buzz"})
-                asyncio.ensure_future(self.notify_alert(a["id"], "auto"))   # supervisor notification
+                if AUTO_WHATSAPP:                   # supervisor notification
+                    self.spawn(self.notify_alert(a["id"], "auto"))
         elif ema < CHIP_STOP - 2:
             w["_stop_since"] = 0.0
             if w["_temp_stop"]:
@@ -499,6 +598,8 @@ class Core:
                 self.send_cmd(w, {"cmd": "msg", "text": "Extreme heat. Stop work, sit in the shade, pour water on "
                                                         "your head and neck. Help is on the way."})
                 self.escalate(a)
+                self.record_incident(a, w, itype="heat_stroke", source="server",
+                                     details={"chip_c": chip, "wrist_c": est, "line_c": CHIP_CALL - CHIP_OFFSET})
         elif ema < CHIP_CALL - 3:
             w["_call_since"] = 0.0
             w["_temp_called"] = False
@@ -522,6 +623,7 @@ class Core:
                     if x["state"] not in CLOSED:
                         x["timeline"].append({"type": typ, "ts": now})
                         self.update_alert(x, state="resolved", message=x["message"] + " Worker cancelled the alarm.")
+                        self.record_incident(x, w, status="cancelled")
                 return
             a = recent[-1] if recent else None
             if not a:
@@ -538,6 +640,7 @@ class Core:
                                   message=a["message"].split(" Asking")[0] +
                                   " No answer to the on-wrist prompt. Send help.")
                 self.escalate(a)
+            self.record_incident(a, w, status={"ok": "worker_ok", "cancel": "cancelled"}.get(suffix, "no_response"))
             return
 
         msg = {
@@ -561,22 +664,124 @@ class Core:
         a = self.new_alert(w, base, sev, TITLES[base], text, detail=d, event_t_ms=t,
                            state="resolved" if base == "impact" else "open")
         if base in WINDOW_TYPES and t is not None:
-            asyncio.ensure_future(self.capture_window(a, w, int(t)))
+            self.spawn(self.capture_window(a, w, int(t)))
         if base == "sos":
             self.escalate(a)
         elif base == "unwell":
             self.cmd_rest(w, 30, "Reported unwell")
         elif base in ("tremor", "erratic"):
             a["_auto_devin"] = True
+        boot = w.get("_boot")
+        self.record_incident(a, w, itype=INCIDENT_TYPE[base], details=d, source="device",
+                             incident_id="%s-%s-%s" % (w["device_id"], boot, seq) if boot and seq is not None else None,
+                             boot_id=boot, read_time_us=int(t) * 1000 if isinstance(t, (int, float)) and boot else None)
 
     def escalate(self, a):
-        """Critical and unanswered: WhatsApp the HSE team and get Devin's second opinion."""
+        """Critical and unanswered: WhatsApp the HSE team and get Devin's second opinion.
+        Returns the channels used (also kept on the alert for its incident record)."""
+        out = []
         if AUTO_WHATSAPP:
-            asyncio.ensure_future(self.notify_alert(a["id"], "auto"))
+            self.spawn(self.notify_alert(a["id"], "auto"))
+            if self.caller and a["severity"] == "critical" and not a.get("simulated"):
+                out.append("call")
+            if self.whatsapp:
+                out.append("whatsapp")
         if a["type"] in ("fall", "tremor", "erratic", "inactivity"):
             a["_auto_devin"] = True
+            if AUTO_DEVIN:
+                out.append("devin")
             if a["has_window"]:
                 self.maybe_auto_devin(a)
+        a["_escalated"] = sorted(set(a.get("_escalated") or []) | set(out))
+        a["_escalated_once"] = True
+        return out
+
+    # ------------------------------------------------------------ incidents (heatguard.incident.v1)
+    @staticmethod
+    def person_of(w, device_id):
+        if not w:
+            return {"name": device_id}
+        return {"name": w.get("name"), "worker_id": w["id"], "trade": w.get("trade"),
+                "crew": w.get("crew"), "zone": w.get("zone")}
+
+    def prepare_incident(self, inc):
+        """Defaults for a POSTed incident: the person and zone of the worker wearing that device."""
+        w = self.live.get(inc.device_id) or self.add_live(inc.device_id)
+        upd = {}
+        if inc.person is None:
+            upd["person"] = self.person_of(w, inc.device_id)
+        if inc.location is None:
+            upd["location"] = self.location_of(w)
+        return inc.model_copy(update=upd) if upd else inc
+
+    def record_incident(self, a, w, itype=None, status=None, details=None, source="server",
+                        incident_id=None, boot_id=None, read_time_us=None):
+        """Write HeatGuard's own detection (or a status change of it) to the incidents table,
+        linked to alert `a`. Live wearables only: simulated workers are not people."""
+        if self.service is None or not w or not w.get("live"):
+            return
+        new = not a.get("incident_id")
+        itype = itype or a.get("_incident_type") or INCIDENT_TYPE.get(a["type"], "other")
+        if new:
+            a["incident_id"] = incident_id or "%s-%s" % (w["device_id"], uuid.uuid4().hex[:12])
+            a["_incident_type"] = itype
+            self.publish("alert", public(a))
+        try:
+            inc = incidents_mod.IncidentIn(
+                schema=incidents_mod.SCHEMA, incident_id=a["incident_id"], device_id=w["device_id"],
+                type=itype, status=status, details=details,
+                severity=a["severity"] if new or status not in INCIDENT_CLOSED else None,
+                person=self.person_of(w, w["device_id"]) if new else None,
+                location=self.location_of(w) if new else None,
+                source=source if new else None, boot_id=boot_id, read_time_us=read_time_us)
+        except Exception:
+            log.exception("heatguard: bad incident for alert %s", a["id"])
+            return
+        self.spawn(self._store_incident(inc, {"alert_id": a["id"], "escalated": a.get("_escalated") or []}))
+
+    async def _store_incident(self, inc, link):
+        if self._incident_lock is None:
+            self._incident_lock = asyncio.Lock()
+        async with self._incident_lock:        # FIFO: a status update never overtakes its create
+            try:
+                await incidents_mod.record(self.service.pool, inc, self.service.registry, link=link)
+            except Exception:
+                log.exception("heatguard: storing incident %s failed", inc.incident_id)
+
+    async def on_incident(self, inc, created, prev):
+        """Hook for POST /v1/incidents: raise or update the alert, close it on worker_ok /
+        cancelled / resolved, and escalate a critical incident once."""
+        did, status, sev = inc["device_id"], inc["status"], inc["severity"]
+        w = self.live.get(did) or self.add_live(did)
+        a = self.alerts.get(inc.get("alert_id") or "")
+        details = inc.get("details") or {}
+        atype = ALERT_TYPE.get(inc["type"], "other")
+        title = INCIDENT_TITLES.get(inc["type"]) or TITLES.get(atype) or "Incident reported"
+        if a is None:
+            text = details.get("message") or "%s reported by %s." % (title, inc.get("source") or "device")
+            a = self.new_alert(w, atype, sev, title, str(text)[:300],
+                               source=inc.get("source") or "device", detail=details)
+            a["incident_id"], a["_incident_type"] = inc["incident_id"], inc["type"]
+            if inc.get("read_time_us") is not None and inc.get("boot_id") and inc["boot_id"] == w.get("_boot"):
+                a["_event_t"] = inc["read_time_us"] // 1000
+                self.spawn(self.capture_window(a, w, a["_event_t"]))
+        a["timeline"].append({"type": "incident_" + status, "ts": time.time()})
+        if status in INCIDENT_CLOSED:
+            self.update_alert(a, state="resolved", severity=sev,
+                              message=a["message"] + {"worker_ok": " Worker answered they are OK.",
+                                                      "cancelled": " Cancelled.", "resolved": " Resolved."}[status])
+        elif status == "acknowledged":
+            self.update_alert(a, state="acknowledged", severity=sev)
+        elif status == "no_response":
+            self.update_alert(a, state="open", severity=sev,
+                              title=a["title"].split(" · ")[0] + " · NO RESPONSE")
+        else:
+            self.update_alert(a, severity=sev)
+        escalated = []
+        if sev == "critical" and status not in INCIDENT_CLOSED and not (prev or {}).get("escalated") \
+                and not a.get("_escalated_once"):
+            escalated = self.escalate(a)
+        return {"alert_id": a["id"], "escalated": escalated}
 
     async def capture_window(self, a, w, t):
         await asyncio.sleep(4.5)
@@ -594,7 +799,7 @@ class Core:
         if now - self._last_auto_devin < 90:
             return
         self._last_auto_devin = now
-        asyncio.ensure_future(self.analyze(a))
+        self.spawn(self.analyze(a))
 
     # ------------------------------------------------------------ alerts
     def new_alert(self, w, typ, severity, title, message, source="device", simulated=False,
@@ -605,7 +810,7 @@ class Core:
             "id": "A-%06d" % self.alert_seq, "worker_id": w["id"], "worker_name": w["name"],
             "live": bool(w.get("live")), "simulated": simulated, "type": typ, "severity": severity,
             "title": title, "message": message, "ts": now, "state": state, "source": source,
-            "has_window": False, "devin": None, "notified": [],
+            "has_window": False, "devin": None, "notified": [], "incident_id": None,
             "timeline": [{"type": typ, "ts": now}], "detail": detail or {},
             "zone": w.get("zone"), "crew": w.get("crew"), "trade": w.get("trade"),
             "_window": None, "_event_t": event_t_ms, "_resolve_at": None,
@@ -635,6 +840,8 @@ class Core:
         w = self.find_worker(a["worker_id"])
         now = time.time()
         a["timeline"].append({"type": "supervisor_" + action, "ts": now})
+        if a.get("incident_id") and w:
+            self.record_incident(a, w, status="acknowledged" if action == "ack" else "resolved")
         if action == "ack":
             self.update_alert(a, state="acknowledged")
             if w and w.get("live"):
@@ -729,7 +936,7 @@ class Core:
             self.store_note(n)
             a["notified"].append(n["id"])
             if n.get("channel") == "call" and n.get("provider_id"):
-                asyncio.ensure_future(self.caller.follow(n, self.store_note))
+                self.spawn(self.caller.follow(n, self.store_note))
         a["timeline"].append({"type": "escalated_" + (reason or "manual"), "ts": time.time()})
         self.update_alert(a)
         return notes
@@ -782,6 +989,9 @@ class Core:
             a = self.new_alert(w, "sos", "critical", "Help requested by voice",
                                "Worker asked for help: %s" % args.get("reason", "no reason given"), source="voice")
             notes = await self.notify_alert(a["id"], "voice") if AUTO_WHATSAPP else []
+            a["_escalated"] = sorted({n.get("channel") for n in notes if n.get("channel")})
+            self.record_incident(a, w, itype="manual_sos", source="voice",
+                                 details={"reason": args.get("reason") or "", "said_by": "worker"})
             return {"ok": True, "alert_id": a["id"], "supervisor_notified": True, "whatsapp_messages": len(notes)}
         return {"ok": False, "error": "unknown tool " + name}
 
@@ -800,7 +1010,7 @@ class Core:
             self.sim_tick(now, dt, dt_min)
             if n % 2 == 0:
                 self.publish("fleet", self.fleet_view())
-            if n % 60 == 0:
+            if LAN and n % 60 == 0:
                 self.ips = lan_ips()
 
     def live_tick(self, w, now, dt_min, n):
@@ -875,9 +1085,10 @@ class Core:
             "serial_connected": bool(self.bridge and self.bridge.connected),
             "bridge_enabled": bool(self.bridge and self.bridge.enabled),
             "wearables": [{"id": w["id"], "device_id": d, "transport": w["_transport"],
-                           "online": now - w["_last_seen"] <= OFFLINE_S, "ip": (w["_addr"] or [None])[0],
+                           "online": now - w["_last_seen"] <= OFFLINE_S, "ip": w["_addr"][0] if isinstance(w["_addr"], tuple) else w["_ip"],
                            "fw": w["_fw"]} for d, w in self.live.items()],
-            "gateway": {"udp_port": UDP_PORT, "ips": self.ips, "http_port": HTTP_PORT},
+            "gateway": {"lan": LAN, "udp_port": UDP_PORT, "ips": self.ips, "http_port": HTTP_PORT,
+                        "device_ws": "/v1/device/ws"},
             "fleet_size": len(self.fleet), "timewarp": self.config["timewarp"],
             "sim_events": self.config["sim_events"],
             "assistant": self.assistant.describe() if self.assistant else
@@ -903,81 +1114,110 @@ class Core:
 core = Core()
 
 
-@asynccontextmanager
-async def lifespan(app):
+_tasks = []
+
+
+async def startup():
+    """Start HeatGuard's background work (called from the telemetry app's lifespan)."""
     core.loop = asyncio.get_running_loop()
-    core.ips = lan_ips()
-    await core.udp.start()
-    core.bridge = SerialBridge(core.loop, core.on_device_msg, os.environ.get("HEATGUARD_PORT"))
-    tasks = [asyncio.create_task(x) for x in (core.ticker(), core.weather_loop(), beacon(HTTP_PORT))]
-    if core.caller:
-        await core.caller.setup()
+    jobs = [core.ticker()]
+    if WEATHER:
+        jobs.append(core.weather_loop())
+    if LAN:
+        core.ips = lan_ips()
+        try:
+            await core.udp.start()
+        except OSError as e:
+            log.error("heatguard: UDP gateway :%s unavailable: %s", UDP_PORT, e)
+        try:
+            import serial  # noqa: F401  (pyserial, the `lan` extra)
+            core.bridge = SerialBridge(core.loop, core.on_device_msg, os.environ.get("HEATGUARD_PORT"))
+        except ImportError:
+            log.warning("heatguard: pyserial missing, no USB serial bridge (pip install '.[lan]')")
+        jobs.append(beacon(HTTP_PORT))
+    _tasks[:] = [asyncio.create_task(j) for j in jobs]
+    core.spawn(core.setup_escalation())    # Twilio lookups run in the background
     if Assistant:
         try:
             core.assistant = Assistant(core)
-            await core.assistant.start()
+            if LAN:                        # TCP :47802 voice port; otherwise voice is on the WebSocket
+                await core.assistant.start()
         except Exception as e:
-            print("voice assistant failed to start:", e)
+            log.error("voice assistant failed to start: %s", e)
             core.assistant = None
-    yield
-    for t in tasks:
+    log.info("heatguard: started (lan=%s, weather=%s, voice=%s)", LAN, WEATHER,
+             core.assistant.describe() if core.assistant else None)
+
+
+async def shutdown():
+    """Stop HeatGuard's background work."""
+    jobs = _tasks + list(core._jobs)
+    _tasks.clear()
+    for t in jobs:
         t.cancel()
-    if core.assistant and hasattr(core.assistant, "stop"):
+    await asyncio.gather(*jobs, return_exceptions=True)
+    if core.assistant:
         try:
             await core.assistant.stop()
         except Exception:
             pass
+    core.udp.stop()
+    if core.bridge:
+        core.bridge.stop()
+        core.bridge = None
 
 
-app = FastAPI(title="HeatGuard", lifespan=lifespan)
+router = APIRouter(tags=["heatguard"])
 
 
 # ---------------------------------------------------------------- device API
-def normalize(m):
-    if "k" in m:
-        return m
-    did, typ, d = m.get("device_id") or m.get("id"), m.get("type"), m.get("data") or {}
-    if typ == "imu":
-        return {"k": "s", "id": did, **d}
-    if typ == "status":
-        return {"k": "st", "id": did, **d}
-    if typ == "temperature":
-        if d.get("source") == "ambient":
-            core.override = core.override or None
-            core.weather = {**(core.weather or FALLBACK_WEATHER), "temp_c": d["temp_c"],
-                            "rh": d.get("rh", (core.weather or FALLBACK_WEATHER)["rh"]), "source": "sensor"}
-            core.compute_site()
-            return {"k": "noop", "id": did}
-        return {"k": "st", "id": did, "temp": d.get("temp_c")}
-    if typ == "event":
-        return {"k": "ev", "id": did, "type": d.get("type"), "detail": d.get("detail") or {},
-                "t": d.get("t"), "seq": d.get("seq")}
-    return None
-
-
-@app.post("/api/v1/ingest")
-async def ingest(request: Request):
-    body = await request.json()
-    msgs = body if isinstance(body, list) else [body]
-    n, dev = 0, None
-    for m in msgs:
-        obj = normalize(m) if isinstance(m, dict) else None
-        if obj and obj.get("id"):
-            core.on_device_msg(obj, "http", None)
-            dev, n = obj["id"], n + 1
-    cmds = []
-    if dev and dev in core.live:
-        cmds, core.live[dev]["_pending"] = core.live[dev]["_pending"], []
-    return {"ok": True, "accepted": n, "commands": cmds}
+# Retired: telemetry now comes as sticks3.telemetry.v1 frames (device WebSocket /v1/device/ws or
+# POST /v1/ingest/frames). The old mixed ingest endpoint is kept below for reference.
+# def normalize(m):
+#     if "k" in m:
+#         return m
+#     did, typ, d = m.get("device_id") or m.get("id"), m.get("type"), m.get("data") or {}
+#     if typ == "imu":
+#         return {"k": "s", "id": did, **d}
+#     if typ == "status":
+#         return {"k": "st", "id": did, **d}
+#     if typ == "temperature":
+#         if d.get("source") == "ambient":
+#             core.override = core.override or None
+#             core.weather = {**(core.weather or FALLBACK_WEATHER), "temp_c": d["temp_c"],
+#                             "rh": d.get("rh", (core.weather or FALLBACK_WEATHER)["rh"]), "source": "sensor"}
+#             core.compute_site()
+#             return {"k": "noop", "id": did}
+#         return {"k": "st", "id": did, "temp": d.get("temp_c")}
+#     if typ == "event":
+#         return {"k": "ev", "id": did, "type": d.get("type"), "detail": d.get("detail") or {},
+#                 "t": d.get("t"), "seq": d.get("seq")}
+#     return None
+#
+#
+# @router.post("/api/v1/ingest")
+# async def ingest(request: Request):
+#     body = await request.json()
+#     msgs = body if isinstance(body, list) else [body]
+#     n, dev = 0, None
+#     for m in msgs:
+#         obj = normalize(m) if isinstance(m, dict) else None
+#         if obj and obj.get("id"):
+#             core.on_device_msg(obj, "http", None)
+#             dev, n = obj["id"], n + 1
+#     cmds = []
+#     if dev and dev in core.live:
+#         cmds, core.live[dev]["_pending"] = core.live[dev]["_pending"], []
+#     return {"ok": True, "accepted": n, "commands": cmds}
 
 
 # ---------------------------------------------------------------- dashboard API
-@app.get("/api/v1/state")
+@router.get("/api/v1/state")
 async def get_state():
     return core.state()
 
 
-@app.get("/api/v1/stream")
+@router.get("/api/v1/stream")
 async def stream(request: Request):
     q = asyncio.Queue(maxsize=2000)
     core.subs.add(q)
@@ -999,7 +1239,7 @@ async def stream(request: Request):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@app.get("/api/v1/workers")
+@router.get("/api/v1/workers")
 async def list_workers(status: str | None = None, limit: int = 100):
     ws = list(core.by_wid.values()) + core.fleet
     if status:
@@ -1008,7 +1248,7 @@ async def list_workers(status: str | None = None, limit: int = 100):
     return [public(w) for w in ws[:limit]]
 
 
-@app.get("/api/v1/workers/{wid}")
+@router.get("/api/v1/workers/{wid}")
 async def get_worker(wid: str):
     w = core.find_worker(wid)
     if not w:
@@ -1018,7 +1258,7 @@ async def get_worker(wid: str):
     return out
 
 
-@app.post("/api/v1/workers/{wid}/command")
+@router.post("/api/v1/workers/{wid}/command")
 async def worker_command(wid: str, request: Request):
     w = core.find_worker(wid)
     if not w:
@@ -1041,12 +1281,12 @@ async def worker_command(wid: str, request: Request):
     return {"ok": True, "simulated": not w.get("live"), "worker": public(w)}
 
 
-@app.get("/api/v1/alerts")
+@router.get("/api/v1/alerts")
 async def list_alerts(limit: int = 100):
     return [public(a) for a in reversed(list(core.alerts.values())[-limit:])]
 
 
-@app.post("/api/v1/alerts/{aid}/{action}")
+@router.post("/api/v1/alerts/{aid}/{action}")
 async def alert_action(aid: str, action: str):
     if action in ("ack", "resolve", "false_alarm"):
         return core.alert_action(aid, action)
@@ -1054,14 +1294,14 @@ async def alert_action(aid: str, action: str):
     if not a:
         raise HTTPException(404, "no such alert")
     if action == "devin":
-        asyncio.ensure_future(core.analyze(a))
+        core.spawn(core.analyze(a))
         return {"ok": True, "engine": "devin" if core.devin.configured else "local"}
     if action == "notify":
         return {"ok": True, "notifications": await core.notify_alert(aid, "manual")}
     raise HTTPException(404, "unknown action")
 
 
-@app.get("/api/v1/alerts/{aid}/window")
+@router.get("/api/v1/alerts/{aid}/window")
 async def alert_window(aid: str):
     a = core.alerts.get(aid)
     if not a or not a.get("_window"):
@@ -1069,7 +1309,7 @@ async def alert_window(aid: str):
     return a["_window"]
 
 
-@app.get("/api/v1/alerts/{aid}/devin_prompt", response_class=PlainTextResponse)
+@router.get("/api/v1/alerts/{aid}/devin_prompt", response_class=PlainTextResponse)
 async def alert_prompt(aid: str):
     a = core.alerts.get(aid)
     if not a:
@@ -1082,7 +1322,7 @@ async def alert_prompt(aid: str):
                                   devin_mod.features(a.get("_window")))
 
 
-@app.post("/api/v1/site/override")
+@router.post("/api/v1/site/override")
 async def site_override(request: Request):
     c = await request.json()
     sun = bool(c.get("sun", True))
@@ -1093,7 +1333,7 @@ async def site_override(request: Request):
     return core.site
 
 
-@app.delete("/api/v1/site/override")
+@router.delete("/api/v1/site/override")
 async def site_override_clear():
     core.override = None
     core.compute_site()
@@ -1101,7 +1341,7 @@ async def site_override_clear():
     return core.site
 
 
-@app.post("/api/v1/demo")
+@router.post("/api/v1/demo")
 async def demo(request: Request):
     c = await request.json()
     if "timewarp" in c:
@@ -1114,21 +1354,28 @@ async def demo(request: Request):
     return core.config_view()
 
 
-@app.get("/api/v1/bridge")
+def bridge_state():
+    b = core.bridge          # None unless HEATGUARD_LAN=1 (and pyserial installed)
+    return {"enabled": bool(b and b.enabled), "port": b.port if b else None,
+            "connected": bool(b and b.connected)}
+
+
+@router.get("/api/v1/bridge")
 async def bridge_get():
-    return {"enabled": core.bridge.enabled, "port": core.bridge.port, "connected": core.bridge.connected}
+    return bridge_state()
 
 
-@app.post("/api/v1/bridge")
+@router.post("/api/v1/bridge")
 async def bridge_set(request: Request):
     c = await request.json()
-    core.bridge.enabled = bool(c.get("enabled", True))
-    await asyncio.sleep(0.8 if not core.bridge.enabled else 0)
-    core.publish("config", core.config_view())
-    return {"enabled": core.bridge.enabled, "port": core.bridge.port, "connected": core.bridge.connected}
+    if core.bridge:
+        core.bridge.enabled = bool(c.get("enabled", True))
+        await asyncio.sleep(0.8 if not core.bridge.enabled else 0)
+        core.publish("config", core.config_view())
+    return bridge_state()
 
 
-@app.get("/")
+@router.get("/", include_in_schema=False)
 async def index():
     f = STATIC / "index.html"
     if f.exists():

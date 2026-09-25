@@ -1,4 +1,4 @@
-"""Device transports.
+"""LAN device transports (only started with HEATGUARD_LAN=1; Cloud Run has no UDP or USB).
 
 WiFi (primary): wearables stream JSON datagrams to UDP :47800. UDP keeps the
 50 Hz sampling loop on the wrist non-blocking; a slow or dropped packet never
@@ -62,6 +62,11 @@ class UdpGateway:
         loop = asyncio.get_running_loop()
         await loop.create_datagram_endpoint(lambda: self.proto, local_addr=("0.0.0.0", UDP_PORT))
 
+    def stop(self):
+        if self.proto.transport:
+            self.proto.transport.close()
+            self.proto.transport = None
+
     def send(self, addr, obj):
         if self.proto.transport and addr:
             self.proto.transport.sendto((json.dumps(obj, separators=(",", ":")) + "\n").encode(), addr)
@@ -120,7 +125,11 @@ class SerialBridge:
         self.connected = False
         self._ser = None
         self._lock = threading.Lock()
+        self._stop = False
         threading.Thread(target=self._run, daemon=True).start()
+
+    def stop(self):
+        self._stop, self.enabled = True, False
 
     def _find(self):
         if self.port_hint:
@@ -130,7 +139,7 @@ class SerialBridge:
 
     def _run(self):
         import serial
-        while True:
+        while not self._stop:
             if not self.enabled:
                 self._close()
                 time.sleep(0.5)

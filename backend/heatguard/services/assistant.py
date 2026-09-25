@@ -1,8 +1,11 @@
 """HeatGuard voice assistant: push-to-talk relay between the wrist device and OpenAI.
 
-Device side (TCP :47802, docs/services.md §3), one connection per question:
-  device -> server  H {"id","rate","fmt"}, A (PCM16 LE mono 24 kHz, <= 4800 B), E
-  server -> device  T (screen text), A (reply audio), then E (done) or X (error); close
+Device side, one question at a time, transport-agnostic (Assistant.run_session):
+  device -> server  H {"rate","fmt"[,"id"]}, A (PCM16 LE mono 24 kHz, <= 4800 B), E
+  server -> device  T (screen text), A (reply audio), then E (done) or X (error)
+Carried as binary messages on the device WebSocket (heatguard/device_ws.py, first byte =
+type), or, with HEATGUARD_LAN=1, over TCP :47802 (type | 2-byte length | payload, one
+connection per question, docs/heatguard/services.md §3).
 
 Two engines, picked with HEATGUARD_VOICE_ENGINE:
 
@@ -43,7 +46,6 @@ import sys
 import time
 import uuid
 from array import array
-from pathlib import Path
 from urllib.parse import urlsplit
 
 try:
@@ -78,8 +80,6 @@ MAX_SESSIONS = 6                # concurrent questions
 START_TIMEOUT = 10.0            # live: session.start -> session.started
 BACKEND_MAX_S = 20.0            # live: give up waiting on one delegation
 TRANSCRIPT_LINGER = 2.5         # realtime: wait for the worker transcript after E
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 TOOLS = [
     {
@@ -170,39 +170,12 @@ async def read_frame(reader: asyncio.StreamReader) -> tuple[bytes, bytes]:
     return head[:1], (await reader.readexactly(n) if n else b"")
 
 
-def _dotenv(path: Path) -> dict:
-    out = {}
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return out
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        if line.startswith("export "):
-            line = line[7:].lstrip()
-        k, v = line.split("=", 1)
-        v = v.strip()
-        if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
-            v = v[1:-1]
-        out[k.strip()] = v
-    return out
-
-
 def find_api_key() -> str:
-    """OPENAI_API_KEY from the environment, else OPENAI_API_KEY or OPENAI from the project .env.
+    """OPENAI_API_KEY from the environment (heatguard.env loads the .env file and maps OPENAI).
 
     The value is only ever used in the Authorization header; it is never logged.
     """
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
-    if key:
-        return key
-    env = _dotenv(PROJECT_ROOT / ".env")
-    for name in ("OPENAI_API_KEY", "OPENAI"):
-        if env.get(name):
-            return env[name].strip()
-    return ""
+    return os.environ.get("OPENAI_API_KEY", "").strip()
 
 
 def _utf8_head(s: str, n: int) -> str:
@@ -412,23 +385,28 @@ class _Fail(Exception):
     """Ends the question with an X frame carrying str(self)."""
 
 
-class _DeviceGone(Exception):
-    pass
+class DeviceGone(Exception):
+    """Raised by a transport's recv_frame / send_frame when the device side is gone."""
+
+
+_DeviceGone = DeviceGone
 
 
 class _Device:
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        self.reader, self.writer = reader, writer
-        peer = writer.get_extra_info("peername")
-        self.peer = f"{peer[0]}:{peer[1]}" if isinstance(peer, tuple) else str(peer)
+    """The device side of one question: frames in via recv_frame(), out via send_frame()."""
+
+    def __init__(self, recv_frame, send_frame, peer: str = "", close=None, drain=None):
+        self._recv, self._send = recv_frame, send_frame
+        self._close_cb, self._drain = close, drain
+        self.peer = peer
         self.got_end = False
         self.gone = False
         self.closed = False
 
     async def read(self) -> tuple[bytes, bytes]:
         try:
-            return await read_frame(self.reader)
-        except (asyncio.IncompleteReadError, ConnectionError, OSError):
+            return await self._recv()
+        except (asyncio.IncompleteReadError, ConnectionError, OSError, DeviceGone):
             self.gone = True
             raise _DeviceGone()
 
@@ -436,44 +414,65 @@ class _Device:
         if self.gone or self.closed:
             raise _DeviceGone()
         try:
-            self.writer.write(pack(kind, payload))
-            await self.writer.drain()
-        except (ConnectionError, OSError):
+            await self._send(kind, payload)
+        except (ConnectionError, OSError, DeviceGone):
             self.gone = True
             raise _DeviceGone()
 
     async def reject(self, msg: str) -> None:
-        """X frame, then swallow what the device is still streaming so the close is a FIN, not a RST."""
+        """X frame, then (TCP) swallow what the device is still streaming so the close is clean."""
         try:
             await self.send(b"X", _utf8_head(msg, MAX_TEXT).encode("utf-8"))
         except _DeviceGone:
             return
-        if self.got_end:
+        if self.got_end or not self._drain:
             return
+        await self._drain()
+
+    async def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        if self._close_cb:
+            try:
+                await self._close_cb()
+            except Exception:
+                pass
+
+
+def _tcp_device(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> _Device:
+    """LAN mode: one TCP connection per question, length-prefixed frames."""
+    peer = writer.get_extra_info("peername")
+    peer = f"{peer[0]}:{peer[1]}" if isinstance(peer, tuple) else str(peer)
+
+    async def recv():
+        return await read_frame(reader)
+
+    async def send(kind, payload):
+        writer.write(pack(kind, payload))
+        await writer.drain()
+
+    async def drain():
         try:
-            if self.writer.can_write_eof():
-                self.writer.write_eof()
+            if writer.can_write_eof():
+                writer.write_eof()
         except OSError:
             return
         loop = asyncio.get_running_loop()
         deadline = loop.time() + 20.0
         while loop.time() < deadline:
             try:
-                chunk = await asyncio.wait_for(self.reader.read(65536), 1.5)
+                chunk = await asyncio.wait_for(reader.read(65536), 1.5)
             except (TimeoutError, ConnectionError, OSError):
                 return
             if not chunk:
                 return
 
-    async def close(self) -> None:
-        if self.closed:
-            return
-        self.closed = True
-        try:
-            self.writer.close()
-            await asyncio.wait_for(self.writer.wait_closed(), 2.0)
-        except Exception:
-            pass
+    async def close():
+        writer.close()
+        await asyncio.wait_for(writer.wait_closed(), 2.0)
+
+    return _Device(recv, send, peer, close=close, drain=drain)
 
 
 # ---------------------------------------------------------------- one question
@@ -481,12 +480,12 @@ class _Device:
 class _Turn:
     """State shared by both engines for one push-to-talk question."""
 
-    def __init__(self, asst: "Assistant", dev: _Device):
+    def __init__(self, asst: "Assistant", dev: _Device, device_id: str | None = None):
         self.a = asst
         self.core = asst.core
         self.dev = dev
         self.turn_id = uuid.uuid4().hex[:8]
-        self.device_id = ""
+        self.device_id = device_id or ""
         self.worker_id = ""
         self.worker_name = ""
         self.audio_in = 0
@@ -524,7 +523,8 @@ class _Turn:
                     raise _Fail("Bad request")
                 if not isinstance(hdr, dict):
                     raise _Fail("Bad request")
-                self.device_id = str(hdr.get("id") or "").strip()[:64] or f"unknown-{self.dev.peer}"
+                self.device_id = (self.device_id or str(hdr.get("id") or "").strip()[:64]
+                                  or f"unknown-{self.dev.peer}")
                 fmt = str(hdr.get("fmt", "pcm16")).lower()
                 if hdr.get("rate", RATE) != RATE or fmt not in ("pcm16", "s16le", "pcm"):
                     raise _Fail("Unsupported audio format")
@@ -695,8 +695,8 @@ class _Turn:
 class _RealtimeTurn(_Turn):
     """OpenAI Realtime GA: manual turns, session tools, response.done ends the answer."""
 
-    def __init__(self, asst, dev):
-        super().__init__(asst, dev)
+    def __init__(self, asst, dev, device_id=None):
+        super().__init__(asst, dev, device_id)
         self._odd_in = b""
         self.rounds = 0
 
@@ -860,8 +860,8 @@ class _RealtimeTurn(_Turn):
 class _LiveTurn(_Turn):
     """GPT-Live: full-duplex voice model, tools through Responses delegation."""
 
-    def __init__(self, asst, dev):
-        super().__init__(asst, dev)
+    def __init__(self, asst, dev, device_id=None):
+        super().__init__(asst, dev, device_id)
         self.q: asyncio.Queue = asyncio.Queue()
         self.started = asyncio.Event()
         self.closing = False
@@ -1211,7 +1211,8 @@ class _LiveTurn(_Turn):
 # ---------------------------------------------------------------- server
 
 class Assistant:
-    """TCP :47802 voice server. `await Assistant(core).start()` and leave it running."""
+    """Voice relay. run_session() serves one question from any transport (the device
+    WebSocket); start() also opens the LAN TCP :47802 server (HEATGUARD_LAN=1 only)."""
 
     def __init__(self, core, api_key=None, model=None, voice=None, port=47802, url=None,
                  engine=None, host="0.0.0.0", timeout=45.0, transcribe_model=None,
@@ -1310,8 +1311,12 @@ class Assistant:
         log.warning("voice assistant: %s", self.last_error)
         raise _Fail("Voice assistant unavailable")
 
-    async def _on_connect(self, reader, writer) -> None:
-        dev = _Device(reader, writer)
+    async def run_session(self, device_id, recv_frame, send_frame, peer: str = "") -> None:
+        """One push-to-talk question over any transport. recv_frame() -> (kind, payload), first
+        an H frame, raising DeviceGone once the device is gone; send_frame(kind, payload)."""
+        await self._serve(_Device(recv_frame, send_frame, peer or str(device_id or "")), device_id)
+
+    async def _serve(self, dev: _Device, device_id=None) -> None:
         try:
             if not self.enabled:
                 await dev.reject("Voice assistant offline")
@@ -1321,11 +1326,14 @@ class Assistant:
                 return
             self._active += 1
             try:
-                turn = (_LiveTurn if self.engine == "live" else _RealtimeTurn)(self, dev)
+                turn = (_LiveTurn if self.engine == "live" else _RealtimeTurn)(self, dev, device_id)
                 await turn.run()
             finally:
                 self._active -= 1
         except Exception:
-            log.exception("voice connection from %s failed", dev.peer)
+            log.exception("voice session from %s failed", dev.peer)
         finally:
             await dev.close()
+
+    async def _on_connect(self, reader, writer) -> None:
+        await self._serve(_tcp_device(reader, writer))

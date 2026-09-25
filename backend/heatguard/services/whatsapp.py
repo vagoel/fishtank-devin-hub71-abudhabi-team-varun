@@ -33,8 +33,8 @@ get at most one message per 60 s unless the severity went up; suppressed
 recipients are left out of the returned list and noted in the log.
 """
 import asyncio
-import json
 import itertools
+import json
 import logging
 import os
 import re

@@ -1315,7 +1315,7 @@ function renderPills() {
   const online = wear.filter((x) => x.online);
   if (online.length) {
     const w0 = online[0];
-    const via = w0.transport === 'wifi' ? `WiFi${w0.ip ? ' · ' + w0.ip : ''}` : (w0.transport === 'serial' ? 'USB' : (w0.transport || ''));
+    const via = w0.transport === 'wifi' ? `WiFi${w0.ip ? ' · ' + w0.ip : ''}` : (w0.transport === 'serial' ? 'USB' : (w0.transport === 'ws' ? 'Cloud · WebSocket' : (w0.transport || '')));
     setPill('pill-wearable', 'ok', `${online.length > 1 ? online.length + ' online' : 'Online'} · ${via}`, `Wearable ${w0.id} reporting over ${w0.transport}${w0.fw ? ' (' + w0.fw + ')' : ''}`);
   } else if (wear.length) {
     setPill('pill-wearable', 'warn', 'Offline', 'The wearable stopped reporting. Battery, WiFi coverage, or it was taken off.');
@@ -2097,6 +2097,7 @@ function renderAlertCard(el, a) {
         <span class="mono dim">${esc(a.worker_id || '')}</span><span class="sep"></span>
         <span class="rel" data-ts="${isNum(a.ts) ? a.ts : ''}">${relTime(a.ts)}</span>
         <span class="mono dim">${esc(a.id)}</span>
+        ${a.incident_id ? `<a class="mono dim" href="/v1/incidents/${encodeURIComponent(a.incident_id)}" target="_blank" rel="noopener" title="Incident record">${esc(a.incident_id)}</a>` : ''}
       </div>
       ${a.message ? `<p class="alert-msg" dir="auto">${esc(a.message)}</p>` : ''}
       ${actions ? `<div class="alert-actions">${actions}</div>` : ''}

@@ -1,19 +1,22 @@
-export const severityRank = { healthy: 0, offline: 0, warning: 1, critical: 2 }
-export const statusLabels = { new: 'Awaiting review', reviewing: 'Under review', confirmed: 'Response approved', dispatching: 'Dispatching · demo', dispatched: 'Response active · demo', resolved: 'Resolved', dismissed: 'False alarm' }
-export const colors = { healthy: '#69dab0', warning: '#efb35e', critical: '#f87878', offline: '#8393a1' }
-export const isActive = incident => !['resolved', 'dismissed'].includes(incident.status)
+export const severityRank = { healthy: 0, offline: 0, info: 0.5, warning: 1, critical: 2 }
+export const statusLabels = { new: 'Awaiting review', reviewing: 'Under review', confirmed: 'Response approved', dispatching: 'Dispatching · demo', dispatched: 'Response active · demo', resolved: 'Resolved', dismissed: 'False alarm', suspected: 'Suspected incident', no_response: 'Worker has not responded', worker_ok: 'Worker reports OK', cancelled: 'Cancelled at source', acknowledged: 'Acknowledged at source' }
+export const colors = { healthy: '#69dab0', info: '#8cbaff', warning: '#efb35e', critical: '#f87878', offline: '#8393a1' }
+export const isActive = incident => !['resolved', 'dismissed', 'worker_ok', 'cancelled'].includes(incident.status)
+export const needsReview = incident => ['new', 'suspected', 'no_response'].includes(incident.status)
 
 export function siteStatus(site, incidents, stale = false, now = Date.now()) {
   const active = incidents.filter(incident => incident.siteId === site.id && isActive(incident))
   if (active.some(incident => incident.severity === 'critical')) return 'critical'
   if (active.some(incident => incident.severity === 'warning')) return 'warning'
-  return stale || site.connectivity !== 'online' || !Number.isFinite(Date.parse(site.lastSeen)) || now - Date.parse(site.lastSeen) > 30000 ? 'offline' : 'healthy'
+  if (active.some(incident => incident.severity === 'info')) return 'info'
+  return stale || (!site.incidentOnly && site.connectivity !== 'online') || !Number.isFinite(Date.parse(site.lastSeen)) || now - Date.parse(site.lastSeen) > 30000 ? 'offline' : 'healthy'
 }
 
 export function mergeIncidents(previous, incoming) {
   const records = new Map(previous.map(incident => [incident.id, incident]))
   for (const incident of incoming) {
-    if (!records.has(incident.id) || incident.revision > records.get(incident.id).revision) records.set(incident.id, incident)
+    const old = records.get(incident.id)
+    if (!old || incident.revision > old.revision || (incident.revision === old.revision && Date.parse(incident.lastObservedAt) > Date.parse(old.lastObservedAt))) records.set(incident.id, incident)
   }
   return [...records.values()].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
 }
@@ -22,7 +25,7 @@ export function newAlerts(previous, incoming) {
   const records = new Map(previous.map(incident => [incident.id, incident]))
   return incoming.filter(incident => {
     const old = records.get(incident.id)
-    return isActive(incident) && (!old || (incident.revision > old.revision && severityRank[incident.severity] > severityRank[old.severity]))
+    return isActive(incident) && (!old || (incident.revision > old.revision && (!isActive(old) || severityRank[incident.severity] > severityRank[old.severity])))
   }).sort((a, b) => severityRank[b.severity] - severityRank[a.severity])
 }
 

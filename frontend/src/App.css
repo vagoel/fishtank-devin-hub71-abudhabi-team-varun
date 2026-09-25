@@ -376,6 +376,27 @@ h1 { font-size: 31px; letter-spacing: -1.5px; font-weight: 600; line-height: 1.4
 .help-card .text-button { margin-top: 8px; }
 .skip-link { position: fixed; top: -50px; left: 15px; padding: 10px 16px; background: var(--mint); color: #122c21; z-index: 100; font-size: 12px; }
 .skip-link:focus { top: 10px; }
+.mode-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px 15px; padding: 8px 11px; margin-bottom: 12px; border: 1px solid #344b60; background: #16232f; border-radius: 6px; color: #b8ccdf; font-size: 8px; line-height: 1.7; }
+.mode-notice > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+.mode-notice code { font: 8px var(--mono); color: #d6e3ed; overflow-wrap: anywhere; }
+.assignment-note { color: #e2c68f !important; font-size: 9px !important; line-height: 1.8; margin-top: 9px; }
+.incident-id { max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.worker-readings > span, .worker-identity > span:nth-child(2) { min-width: 0; }
+.worker-readings .device-id { display: block; overflow-wrap: anywhere; line-height: 1.7; }
+.worker-history button { overflow-wrap: anywhere; }
+.reported-details dl { margin: 0; }
+.reported-details dl > div { padding: 8px 0; border-bottom: 1px solid #324747; }
+.reported-details dt { font-size: 9px; color: #96b2b4; margin-bottom: 5px; }
+.reported-details dd { margin: 0; font-size: 11px; color: #d3e1d8; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-actions > small { text-align: center; line-height: 1.8; }
+.status-dot.info, .site-health-track span.info { background: #8cbaff; }
+.status-badge.info, .status-badge.acknowledged, .site-monogram.info { border-color: #425e84; background: #1b2c43; color: #b3cfff; }
+.status-badge.suspected, .status-badge.no_response { border-color: #70533d; color: #efd0a6; background: #322921; }
+.status-badge.unknown { border-color: #41525b; color: #a9bbc5; background: #223039; }
+.incident-card.info { border-color: #3c5673; background: linear-gradient(130deg, #26334966, #17212c); }
+.incident-card.info .eyebrow, .incident-icon.info { color: #a5c8fc; }
+.incident-toast.info { border-color: #6b93c9; background: #1d2d43f5; }
+.incident-toast.info .toast-icon { color: #a5c8fc; }
 @media (min-width: 761px) {
   .metric-body > span, .voice-description p, .incident-card > p, .analysis-card > p, .recommendation p { font-size: 11px; }
   .incident-card h3 { font-size: 13px; }

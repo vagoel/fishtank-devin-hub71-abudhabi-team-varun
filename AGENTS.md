@@ -8,14 +8,17 @@
 - Python API, hardware firmware, and Devin analysis logic belong to the other team members. The dashboard consumes their results; it does not implement those systems.
 - Dashboard mode defaults to explicitly labeled fictional demo data. `VITE_DATA_MODE=api` selects the HTTP adapter. API failures must never silently load demo records.
 - Incident severity and review status are separate. Acknowledgement and simulated dispatch do not resolve an incident. Dispatch requires an explicit operator confirmation and is disabled in API mode until a real authorized integration is separately agreed.
-- Temperature readings are band surface readings, not core body temperature. Worker locations are assigned site locations, not live GPS. Do not invent unsupported medical measurements or agent analysis.
+- Demo temperature readings are fictional band surface readings, not core body temperature. The live incident contract supplies no current vitals or device connectivity. Live coordinates are incident locations, not continuous worker tracking. Do not invent medical measurements, live heartbeat status, or agent analysis.
 
 ## Commands
 
 Run from the repository root:
 
 - `npm install` — install the workspace dependencies.
-- `npm run dev:frontend` — run the dashboard; demo mode does not require Python.
+- `npm run dev:frontend` — run the dashboard in the mode selected by the frontend environment; demo mode does not require Python.
+- `npm run dev:demo --workspace frontend` — force standalone demo even when VITE_DATA_MODE selects api or INCIDENT_API_TARGET is invalid.
+- `npm run dev:api --workspace frontend` — force the live incident adapter.
+- `npm run build:demo --workspace frontend` — produce a guaranteed-demo static build, regardless of API-mode environment settings.
 - `npm run dev --workspace frontend -- --host 127.0.0.1 --port 5175 --strictPort` — use the explicit local preview/test port.
 - `npm run lint --workspace frontend`
 - `npm run test --workspace frontend -- --run`
@@ -38,16 +41,18 @@ Vitest tests live in src/**/*.test.js(x) and dev/**/*.test.js. Browser tests liv
 
 ## Dashboard API adapter contract
 
-Proposed routes are isolated in src/services/dashboardApi.js and must be aligned with the teammate's actual API:
+The live adapter in src/services/dashboardApi.js consumes only `GET /v1/incidents`; it does not call the old proposed dashboard/events/review routes or the telemetry endpoints.
 
-- `GET /api/dashboard` returns `{sites, workers, incidents, dispatches, cursor, serverTime}`.
-- `GET /api/events?cursor=...` returns `{incidents, cursor, hasMore}` and may include updated full sites/workers/dispatches arrays. Incident changes are merged by stable ID and increasing integer revision. Paginated updates are committed only when all pages succeed.
-- `POST /api/incidents/:id/review` accepts `{revision, status, reason?}` and returns a full validated dashboard snapshot. Return 409 for a conflicting revision.
-- Site records require id, name, coordinates `[longitude, latitude]`, lastSeen, and online/offline connectivity. Optional footprints are closed coordinate rings.
-- Worker records require id, name, siteId, bandId, lastSeen, connectivity; role, temperature and readings drive the worker panel. Measurements must be numbers or explicitly absent.
-- Incident records require id, revision, siteId, workerId, type, severity (`warning`/`critical`), status, createdAt, and a timeline of `{at, label}`. Analysis has pending/ready/failed state; ready analysis includes summary and recommendation. Evidence includes label, value, and source.
-- Dispatch records include id, incidentId, siteId, selected services, createdAt, and whether simulated. Service identifiers for the demo are medical, safety, and rescue. No real dispatch endpoint is called.
-- The poll interval defaults to 2000ms. The UI keeps last valid data on errors and marks it stale. Unknown/offline data must not be rendered as healthy.
+- Set `VITE_DATA_MODE=api` in the local frontend environment and restart Vite for live data. Set `VITE_DATA_MODE=demo` for the independent fictional demonstration. The explicit `dev:demo` / `build:demo` commands override API-mode settings, while `dev:api` forces live mode. Vite embeds these settings in static builds, so deployment mode changes require rebuilding.
+- Default browser base: `VITE_API_BASE_URL=/api`. Vite proxies GET `/api/v1/incidents` to `INCIDENT_API_TARGET`, defaulting to `https://telemetry-backend-501582454609.asia-northeast1.run.app`. Local proxy writes are rejected. The public/_redirects rule provides the equivalent incident proxy on the next Netlify deployment; another static host needs a same-origin proxy or backend CORS support.
+- The feed accepts arrays, `{incidents: [...]}`, or a single `heatguard.incident.v1` object. Unrecognized or paginated envelopes fail explicitly instead of silently dropping reports.
+- Preserve incident_id, device_id, person name/trade/crew, type, status, severity, occurred_at, location lat/lon/label, details, and source. The deployed service also uses source `api` and supplies received_at, updated_at, alert_id, escalated, boot_id, read_time_us, and optional worker/zone metadata.
+- Poll every 2000ms by default, configurable with `VITE_POLL_INTERVAL_MS`. Polls never overlap and back off on failures. Reports are retained in browser memory and merged by ID; unchanged responses do not repeat alerts. Older server updated_at values do not overwrite newer records. A report disappearing from a response is not treated as a resolution.
+- Preserve source outcomes exactly: suspected/no_response/acknowledged remain active; worker_ok/cancelled/resolved are terminal. Informational severity is supported. Local revisions and observation timestamps are UI bookkeeping, not backend versions or a durable audit log.
+- Read names and locations from each incident. Missing identity or coordinates use clearly labeled demo assignments, as requested for the hackathon. Malformed coordinates fail validation rather than silently moving a reported incident. API-mode mapping accommodates coordinates outside the initial Abu Dhabi camera bounds.
+- Do not derive current vitals, device online status, building footprints, or a Devin assessment from incident records. Backend escalation targets are displayed as reported metadata, not confirmed delivery or dashboard-initiated actions.
+- Live review/dispatch controls remain read-only because only the GET contract is integrated. Demo actions remain fully interactive and simulated. No tests may ingest events, update real incidents, trigger calls, or start paid voice sessions.
+- `E2E_MODE=api npm run test:e2e --workspace frontend` runs live-contract browser fixtures on port 5177. The default browser suite runs the standalone demo on port 5175. Set PLAYWRIGHT_BASE_URL to use a separately running server; never point mutating test actions at backend services.
 
 ## Mapping
 
@@ -57,3 +62,12 @@ Proposed routes are isolated in src/services/dashboardApi.js and must be aligned
 - To test a running production preview, set `PLAYWRIGHT_BASE_URL=http://127.0.0.1:5176` when running the browser suite. The client-bundle check also verifies that a build made with the fake `AMAN_BUILD_SECRET_SENTINEL` server key does not expose it or the session handler to the browser.
 - The style's `distance` filters exclude base-map building polygons near custom landmarks. `within` does not evaluate polygon features and is not suitable for this masking.
 - Keep an accessible site/incident list usable when map tiles or WebGL fail. All construction records and dispatch routes in demo mode are fictional.
+
+## Netlify frontend demo
+
+- The dashboard site is `aman-dashboard-varun` in team `vagoel`, project ID `ea41404a-bbe6-40f5-833a-5ae015515ef9`, at https://aman-dashboard-varun.netlify.app. Do not deploy this dashboard over an unrelated existing site.
+- Deploy only the user-approved committed revision from an isolated worktree when the active checkout contains ongoing work. Upload only `frontend/dist`; do not upload backend code, environment files, or credentials.
+- The static demo uses `VITE_DATA_MODE=demo`, `VITE_API_BASE_URL=/api`, and `VITE_POLL_INTERVAL_MS=2000`. These nonsecret settings are also saved as Netlify build environment variables. Vite embeds them during the build; changing Netlify variables does not change an already uploaded bundle.
+- After building, a manual deployment can use `npx --yes netlify-cli@23.0.0 deploy --site ea41404a-bbe6-40f5-833a-5ae015515ef9 --filter frontend --dir /absolute/path/to/frontend/dist --prod --no-build`. This CLI version supports Node 22.12; do not combine `--context` with `--no-build`. CLI authorization is separate from MCP authorization.
+- Verify the hosted demo with `PLAYWRIGHT_BASE_URL=https://aman-dashboard-varun.netlify.app npm run test:e2e --workspace frontend`. Tests simulate microphone denial and must not start paid sessions.
+- This is a static frontend deployment, not a backend or live voice deployment. Git-based automatic deployment has not been configured.

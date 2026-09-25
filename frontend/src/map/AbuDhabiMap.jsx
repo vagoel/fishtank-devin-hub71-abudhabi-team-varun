@@ -11,10 +11,19 @@ import { createLandmarkLayer } from './landmarkLayer'
 const initialView = { center: [54.389, 24.474], zoom: 12.65, pitch: 55, bearing: -24 }
 const emptyGeo = { type: 'FeatureCollection', features: [] }
 
-export default function AbuDhabiMap({ sites, incidents, selectedSiteId, stale, onSelectSite, view, dispatches }) {
+function fitReportedLocations(map, sites) {
+  if (!map || !sites.length) return
+  const bounds = new maplibregl.LngLatBounds()
+  sites.forEach(site => bounds.extend(site.coordinates))
+  const compact = map.getContainer().clientWidth < 600
+  map.fitBounds(bounds, { padding: { top: 80, bottom: 135, left: compact ? 45 : 190, right: compact ? 45 : 80 }, maxZoom: 14.8, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 800 })
+}
+
+export default function AbuDhabiMap({ mode = 'demo', sites, incidents, selectedSiteId, stale, onSelectSite, view, dispatches }) {
   const host = useRef(null)
   const mapRef = useRef(null)
   const markers = useRef(new Map())
+  const fittedLive = useRef(false)
   const select = useRef(onSelectSite)
   useEffect(() => { select.current = onSelectSite }, [onSelectSite])
   const [ready, setReady] = useState(false)
@@ -30,7 +39,7 @@ export default function AbuDhabiMap({ sites, incidents, selectedSiteId, stale, o
     const landmarkMarkers = []
     try {
       maplibregl.setWorkerUrl(workerUrl)
-      map = new maplibregl.Map({ container: host.current, style: mapStyle, ...initialView, maxBounds: [[54.2, 24.28], [54.75, 24.7]], minZoom: 10.5, maxZoom: 19, maxPitch: 70, attributionControl: { compact: true }, canvasContextAttributes: { antialias: true }, pixelRatio: Math.min(window.devicePixelRatio, 1.75) })
+      map = new maplibregl.Map({ container: host.current, style: mapStyle, ...initialView, maxBounds: mode === 'api' ? undefined : [[54.2, 24.28], [54.75, 24.7]], minZoom: mode === 'api' ? 3 : 10.5, maxZoom: 19, maxPitch: 70, attributionControl: { compact: true }, canvasContextAttributes: { antialias: true }, pixelRatio: Math.min(window.devicePixelRatio, 1.75) })
       mapRef.current = map
       map.on('load', () => {
         if (disposed) return
@@ -81,12 +90,18 @@ export default function AbuDhabiMap({ sites, incidents, selectedSiteId, stale, o
       map?.remove()
       mapRef.current = null
     }
-  }, [])
+  }, [mode])
+
+  useEffect(() => {
+    if (mode !== 'api' || !ready || fittedLive.current || !sites.length) return
+    fittedLive.current = true
+    if (!view) fitReportedLocations(mapRef.current, sites)
+  }, [mode, ready, sites, view])
 
   useEffect(() => {
     if (!ready || !mapRef.current) return
     const map = mapRef.current
-    map.getSource('monitored-sites')?.setData({ type: 'FeatureCollection', features: sites.map(site => ({ type: 'Feature', id: site.id, properties: { id: site.id, color: colors[siteStatus(site, incidents, stale)], height: site.height || 35 }, geometry: { type: 'Polygon', coordinates: [site.footprint || footprint(site.coordinates)] } })) })
+    map.getSource('monitored-sites')?.setData({ type: 'FeatureCollection', features: sites.filter(site => !site.incidentOnly).map(site => ({ type: 'Feature', id: site.id, properties: { id: site.id, color: colors[siteStatus(site, incidents, stale)], height: site.height ?? 35 }, geometry: { type: 'Polygon', coordinates: [site.footprint || footprint(site.coordinates)] } })) })
     const existing = new Set(sites.map(site => site.id))
     markers.current.forEach((marker, id) => { if (!existing.has(id)) { marker.remove(); markers.current.delete(id) } })
     for (const site of sites) {
@@ -152,16 +167,17 @@ export default function AbuDhabiMap({ sites, incidents, selectedSiteId, stale, o
 
   function overview() {
     setFocusedLandmark(null)
+    if (mode === 'api' && sites.length) return fitReportedLocations(mapRef.current, sites)
     mapRef.current?.flyTo({ center: [54.449, 24.468], zoom: 11.75, pitch: threeD ? 48 : 0, bearing: -20, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1000 })
   }
 
   return (
-    <div className="map-stage">
+    <div className="map-stage" onPointerDown={() => { fittedLive.current = true }} onKeyDown={() => { fittedLive.current = true }}>
       <div ref={host} className="map-canvas" aria-label="Interactive 3D map of Abu Dhabi construction sites" />
       {!ready && !failed && <div className="map-loading"><span className="loading-orbit" /><span>Bringing Abu Dhabi into focus</span></div>}
       {failed && <div className="map-fallback"><MapPin size={38} /><h3>City map unavailable</h3><p>Continue monitoring through the site and incident lists.</p></div>}
       {issue && <div className="map-notice" role="status"><WifiOff size={13} />{issue}</div>}
-      <div className="map-coordinate"><span className="status-dot healthy" /> ABU DHABI <span>24.4539° N · 54.3773° E</span></div>
+      <div className="map-coordinate"><span className={`status-dot ${stale ? 'offline' : 'healthy'}`} />{mode === 'api' ? 'REPORTED INCIDENT LOCATIONS' : <>ABU DHABI <span>24.4539° N · 54.3773° E</span></>}</div>
       <div className="map-controls">
         <button aria-label="Zoom in" onClick={() => mapRef.current?.zoomIn()}><Plus size={17} /></button>
         <button aria-label="Zoom out" onClick={() => mapRef.current?.zoomOut()}><Minus size={17} /></button>
@@ -174,8 +190,8 @@ export default function AbuDhabiMap({ sites, incidents, selectedSiteId, stale, o
         <span className="eyebrow">EXPLORE THE CITY</span>
         <div>{landmarks.map(landmark => <button className={focusedLandmark?.id === landmark.id && focusedLandmark.at >= (view?.at || 0) ? 'active' : ''} key={landmark.id} onClick={() => { setFocusedLandmark({ id: landmark.id, at: Date.now() }); setThreeD(true); mapRef.current?.flyTo({ center: landmark.coordinates, zoom: landmark.zoom, offset: [0, landmark.id === 'etihad' ? 80 : 10], pitch: 62, bearing: landmark.bearing, duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1000 }) }}><span className={`landmark-glyph ${landmark.id}`} />{landmark.short}</button>)}</div>
       </div>
-      <div className="map-legend"><span><i className="status-dot healthy" />No active alerts</span><span><i className="status-dot warning" />Warning</span><span><i className="status-dot critical" />Critical</span><span><i className="status-dot offline" />Offline / stale</span></div>
-      <span className="map-disclaimer">Illustrative 3D architecture · sample construction sites{dispatches.length > 0 ? ' · response routes simulated' : ''}</span>
+      <div className="map-legend"><span><i className="status-dot healthy" />No active alerts</span><span><i className="status-dot warning" />Warning</span><span><i className="status-dot critical" />Critical</span>{mode === 'api' && <span><i className="status-dot info" />Informational</span>}<span><i className="status-dot offline" />{mode === 'api' ? 'Stale source data' : 'Offline / stale'}</span></div>
+      <span className="map-disclaimer">{mode === 'api' ? 'Incident locations · fallback assignments labeled demo · illustrative landmarks' : 'Illustrative 3D architecture · sample construction sites'}{dispatches.length > 0 ? ' · response routes simulated' : ''}</span>
     </div>
   )
 }

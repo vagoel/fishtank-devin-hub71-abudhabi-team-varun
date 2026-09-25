@@ -116,3 +116,24 @@ test('retains the incident inbox if the lazy map bundle cannot load', async ({ p
   await page.getByRole('button', { name: /Possible fall detected/ }).click()
   await expect(page.getByRole('button', { name: /Coordinate response/ })).toBeEnabled()
 })
+
+test('standalone demo still works when all incident API traffic is blocked', async ({ page }) => {
+  const apiRequests = []
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url())
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/unreachable-api/') || url.hostname.includes('telemetry-backend-')) {
+      apiRequests.push(url.pathname)
+      return route.abort()
+    }
+    return route.continue()
+  })
+  await page.goto('/')
+  await expect(page.locator('.demo-tag')).toContainText('DEMO ENVIRONMENT')
+  await expect(page.locator('.metric-card').first()).toContainText('72')
+  await expect(page.locator('.incident-card')).toHaveCount(3)
+  await page.getByRole('button', { name: 'Demo scenarios' }).click()
+  await page.getByRole('button', { name: 'Possible fall', exact: true }).click()
+  await expect(page.locator('.incident-card')).toHaveCount(4)
+  await page.waitForTimeout(2300)
+  expect(apiRequests).toEqual([])
+})

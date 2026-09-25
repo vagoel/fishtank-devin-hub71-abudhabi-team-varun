@@ -17,6 +17,13 @@ describe('GPT-Live grounding', () => {
     expect(context).toContain('stale')
     expect(context).toContain('Not ready')
   })
+  it('labels live fallback assignments and missing assessment data without implying current vitals', () => {
+    const incident = { ...dashboard.incidents[0], incidentOnly: true, identityIsDemo: true, locationIsDemo: true, analysis: { status: 'unavailable' } }
+    const live = { ...dashboard, mode: 'api', incidents: [incident] }
+    expect(incidentBriefing(incident, live)).toContain('demo assignment')
+    expect(currentVoiceContext(live)).toContain('Current vitals, device connectivity, and Devin assessments are not supplied')
+    expect(currentVoiceContext(live)).toContain('Not provided by this endpoint')
+  })
   it('handles client delegation metadata without pretending it is a tool call', () => {
     expect(delegationContext({ delegation: { target: 'responses', id: 'd1' } }, dashboard)).toBeNull()
     const result = delegationContext({ delegation: { target: 'client', id: 'd2' }, offset_ms: 900 }, dashboard)

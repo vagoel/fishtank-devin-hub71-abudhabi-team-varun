@@ -4,6 +4,13 @@ export const incidentTypes = {
   fall: { label: 'Possible fall detected', short: 'Possible fall', severity: 'critical', measurement: 'Abrupt orientation change', value: '84°', services: ['medical', 'safety', 'rescue'] },
   temperature: { label: 'Elevated band temperature', short: 'Temperature alert', severity: 'warning', measurement: 'Band surface temperature', value: '39.1 °C', services: ['medical', 'safety'] },
   distress: { label: 'Worker assistance requested', short: 'Assistance request', severity: 'warning', measurement: 'Manual distress event', value: 'SOS', services: ['safety', 'medical'] },
+  heat_stroke: { label: 'Reported heat-stroke alert', short: 'Heat-stroke alert', services: ['medical', 'safety'] },
+  manual_sos: { label: 'Manual SOS received', short: 'Manual SOS', services: ['safety', 'medical'] },
+  tremor: { label: 'Tremor reported', short: 'Tremor', services: ['medical', 'safety'] },
+  inactivity: { label: 'Inactivity reported', short: 'Inactivity', services: ['safety'] },
+  unwell: { label: 'Worker reported feeling unwell', short: 'Worker unwell', services: ['medical', 'safety'] },
+  impact: { label: 'Impact reported', short: 'Impact', services: ['safety', 'medical'] },
+  other: { label: 'Safety incident reported', short: 'Safety incident', services: ['safety'] },
 }
 
 export const responderServices = [

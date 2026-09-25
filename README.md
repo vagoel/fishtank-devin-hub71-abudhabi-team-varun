@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Demo Video | [youtu.be/0vkglo4rvJs](https://youtu.be/0vkglo4rvJs) |
+| Demo Video | [youtu.be/cBoCmNquzvs](https://youtu.be/cBoCmNquzvs) |
 | Control Room Dashboard | [aman-dashboard-varun.netlify.app](https://aman-dashboard-varun.netlify.app/) |
 | Device Photo | ![HeatGuard wearable](docs/heatguard/assets/device1.png) |
 

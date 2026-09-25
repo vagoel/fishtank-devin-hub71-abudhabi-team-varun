@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Telemetry admin</title>
+<title>Telemetry admin · HeatGuard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <style>
   :root {
@@ -49,6 +49,25 @@
   .empty { color: var(--muted); padding: 24px; text-align: center; }
   code { background: #21262d; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
   .bad { color: var(--bad); } .warn { color: var(--warn); } .ok { color: var(--ok); }
+  /* HeatGuard: worker safety */
+  .safety { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 16px; }
+  @media (max-width: 900px) { .safety { grid-template-columns: 1fr; } }
+  .heat { display: grid; gap: 8px; }
+  .heat .big { font-size: 40px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1; }
+  .heat .big small { font-size: 16px; color: var(--muted); font-weight: 500; }
+  .tier { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 700; font-size: 12px; letter-spacing: .4px; }
+  .tier.ok { background: rgba(63,185,80,.18); color: var(--ok); }
+  .tier.stop { background: rgba(210,153,34,.2); color: var(--warn); }
+  .tier.call { background: rgba(248,81,73,.22); color: var(--bad); animation: pulse 1.2s infinite; }
+  .tier.none { background: #30363d; color: var(--muted); }
+  @keyframes pulse { 50% { opacity: .55; } }
+  .note { color: var(--muted); font-size: 11px; }
+  .inc td, .inc th { text-align: left; }
+  .inc tbody tr { cursor: default; }
+  .inc tr.crit.open td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+  .sev { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+  .sev.critical { color: var(--bad); } .sev.warning { color: var(--warn); } .sev.info { color: var(--muted); }
+  .inc .det { color: var(--muted); max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>
@@ -77,6 +96,28 @@
     <div class="kpi"><div class="label">Pending</div><div class="value" id="k-pending">–</div><div class="sub" id="k-pending-sub">rows waiting for COPY</div></div>
     <div class="kpi"><div class="label">Flush</div><div class="value" id="k-flush">–</div><div class="sub" id="k-flush-sub">ms (last / avg)</div></div>
     <div class="kpi"><div class="label">Frames</div><div class="value" id="k-frames">–</div><div class="sub" id="k-frames-sub">dropped · out-of-order · reboots</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Worker safety · HeatGuard <span class="right"><span id="inc-count"></span></span></h2>
+    <div class="safety">
+      <div class="heat">
+        <div class="note">Selected band: <b id="heat-device" style="color:var(--fg)">–</b></div>
+        <div class="big" id="heat-air">–<small> °C air (est.)</small></div>
+        <div><span class="tier none" id="heat-tier">NO DATA</span> <span class="note" id="heat-die"></span></div>
+        <div class="note" id="heat-rule">Stop work at ≥ 35 °C air near the band (die ≥ 70 °C), call for help at ≥ 45 °C (die ≥ 80 °C), each sustained 8 s.</div>
+        <div class="note">Estimated from the band's chip (die) temperature: air ≈ die − 35 °C (calibrated on this StickS3). A band/air reading, not body temperature.</div>
+      </div>
+      <div>
+        <div style="overflow:auto; max-height: 300px">
+          <table class="inc">
+            <thead><tr><th>Time</th><th>What</th><th>Severity</th><th>Status</th><th>Person</th><th>Device</th><th>Details</th></tr></thead>
+            <tbody id="incidents"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="incidents-empty">No incidents yet. Falls, heat and SOS from the bands show up here (<code>/v1/incidents</code>).</div>
+      </div>
+    </div>
   </section>
 
   <section class="panel">
@@ -184,9 +225,75 @@
     },
   });
   const line = (label, color) => ({ label, data: [], borderColor: color, backgroundColor: color, tension: 0 });
-  const tempChart = new Chart($('tempChart'), { type: 'line', data: { datasets: [line('die temperature', '#ff7b72')] }, options: seriesOpts('°C') });
+  const dashed = (label, color) => ({ ...line(label, color), borderDash: [6, 4], borderWidth: 1 });
+  const tempChart = new Chart($('tempChart'), { type: 'line', data: { datasets: [
+    line('die temperature', '#ff7b72'), line('air near band (est.)', '#ffa657'),
+    dashed('stop-work line (die)', '#d29922'), dashed('call line (die)', '#f85149'),
+  ] }, options: seriesOpts('°C') });
   const gyroChart = new Chart($('gyroChart'), { type: 'line', data: { datasets: [line('x', '#4fa3ff'), line('y', '#3fb950'), line('z', '#d2a8ff')] }, options: seriesOpts('°/s') });
   const accelChart = new Chart($('accelChart'), { type: 'line', data: { datasets: [line('x', '#4fa3ff'), line('y', '#3fb950'), line('z', '#d2a8ff')] }, options: seriesOpts('g') });
+
+  // ---- HeatGuard: heat tiers + incidents ------------------------------------------------
+  // Mirrors the backend detector defaults (HEATGUARD_CHIP_OFFSET/STOP/CALL); /v1/heatguard/status wins when present.
+  const HEAT = { offset: 35, stop: 70, call: 80 };
+  async function loadHeat() {
+    try {
+      const h = await getJSON('/api/v1/heat');
+      HEAT.offset = h.chip_offset; HEAT.stop = h.chip_stop; HEAT.call = h.chip_call;
+      $('heat-rule').textContent = `Stop work at ≥ ${fmt(h.air_stop, 0)} °C air near the band (die ≥ ${fmt(h.chip_stop, 0)} °C), `
+        + `call for help at ≥ ${fmt(h.air_call, 0)} °C (die ≥ ${fmt(h.chip_call, 0)} °C), each sustained ${fmt(h.sustain_s, 0)} s.`;
+    } catch (e) { /* older backend: keep defaults */ }
+  }
+  const TYPE_LABEL = { fall: 'Fall', heat_stroke: 'Heat illness risk', manual_sos: 'SOS', tremor: 'Shaking', inactivity: 'No movement', unwell: 'Unwell', impact: 'Hard impact', other: 'Other' };
+  const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const tierOf = (die) => die == null ? ['none', 'NO DATA'] : die >= HEAT.call ? ['call', 'CALL FOR HELP'] : die >= HEAT.stop ? ['stop', 'STOP WORK'] : ['ok', 'OK'];
+
+  function renderHeat(latestDie, status) {
+    $('heat-device').textContent = selected || '–';
+    const die = status && status.die_c != null ? status.die_c : latestDie;
+    const air = status && status.air_c_est != null ? status.air_c_est : (die == null ? null : die - HEAT.offset);
+    $('heat-air').innerHTML = `${air == null ? '–' : fmt(air, 1)}<small> °C air (est.)</small>`;
+    let [cls, text] = tierOf(die);
+    if (status && status.heat_level) {
+      cls = { ok: 'ok', stop_work: 'stop', call: 'call' }[status.heat_level] || cls;
+      text = { ok: 'OK', stop_work: 'STOP WORK', call: 'CALL FOR HELP' }[status.heat_level] || text;
+    }
+    const el = $('heat-tier'); el.className = `tier ${cls}`; el.textContent = text;
+    $('heat-die').textContent = die == null ? '' : `die ${fmt(die, 1)} °C`;
+  }
+
+  async function refreshIncidents() {
+    let list = [];
+    try { list = await getJSON('/v1/incidents?limit=25'); } catch (e) { return; }
+    const now = Date.now() / 1000;
+    const open = list.filter((i) => !['worker_ok', 'cancelled', 'resolved'].includes(i.status));
+    $('inc-count').innerHTML = `${open.filter((i) => i.severity === 'critical').length ? `<span class="bad">${open.filter((i) => i.severity === 'critical').length} critical open</span> · ` : ''}${open.length} open · ${list.length} recent`;
+    $('incidents-empty').style.display = list.length ? 'none' : '';
+    $('incidents').innerHTML = list.map((i) => {
+      const t = Date.parse(i.occurred_at) / 1000;
+      const d = i.details || {};
+      const bits = [];
+      if (d.impact_g != null) bits.push(`impact ${fmt(d.impact_g, 1)} g`);
+      if (d.freefall_ms) bits.push(`free-fall ${fmt(d.freefall_ms)} ms`);
+      if (d.still != null) bits.push(d.still ? 'still after' : 'moved after');
+      if (d.air_c_est != null) bits.push(`air ≈ ${fmt(d.air_c_est, 1)} °C`);
+      if (d.die_c != null) bits.push(`die ${fmt(d.die_c, 1)} °C`);
+      if (d.level) bits.push(d.level.replace('_', ' '));
+      if (d.message) bits.push(d.message);
+      if (d.detector) bits.push(`by ${d.detector}`);
+      const person = (i.person && i.person.name) || '–';
+      const isOpen = !['worker_ok', 'cancelled', 'resolved'].includes(i.status);
+      return `<tr class="${i.severity === 'critical' ? 'crit' : ''} ${isOpen ? 'open' : ''}">
+        <td title="${esc(i.occurred_at)}">${new Date(t * 1000).toLocaleTimeString()} <span class="note">${ago(t, now)}</span></td>
+        <td><b>${esc(TYPE_LABEL[i.type] || i.type)}</b></td>
+        <td><span class="sev ${esc(i.severity)}">${esc(i.severity)}</span></td>
+        <td>${esc(String(i.status).replace('_', ' '))}</td>
+        <td>${esc(person)}</td>
+        <td>${esc(i.device_id)}</td>
+        <td class="det" title="${esc(bits.join(' · '))}">${esc(bits.join(' · ')) || '–'} <span class="note">${esc(i.source || '')}</span></td>
+      </tr>`;
+    }).join('');
+  }
 
   // ---- state ---------------------------------------------------------------------------
   let selected = null;
@@ -322,7 +429,14 @@
     if (t.device_id !== selected) return; // selection changed mid-flight
 
     tempChart.data.datasets[0].data = t.ts.map((x, i) => ({ x, y: t.values[i] }));
+    tempChart.data.datasets[1].data = t.ts.map((x, i) => ({ x, y: t.values[i] - HEAT.offset }));
+    const span = t.ts.length ? [t.ts[0], t.ts[t.ts.length - 1]] : [];
+    tempChart.data.datasets[2].data = span.map((x) => ({ x, y: HEAT.stop }));
+    tempChart.data.datasets[3].data = span.map((x) => ({ x, y: HEAT.call }));
     tempChart.update();
+    let hs = null;
+    try { hs = await getJSON(`/v1/heatguard/status/${id}`); } catch (e) { hs = null; }
+    renderHeat(t.values.length ? t.values[t.values.length - 1] : null, hs);
     for (let k = 0; k < 3; k++) {
       gyroChart.data.datasets[k].data = g.ts.map((x, i) => ({ x, y: g.samples[i][k] }));
       accelChart.data.datasets[k].data = a.ts.map((x, i) => ({ x, y: a.samples[i][k] }));
@@ -356,13 +470,13 @@
   let tick = 0;
   async function refresh() {
     try {
-      if (tick % 10 === 0) await loadDbDevices();
+      if (tick % 10 === 0) await Promise.all([loadDbDevices(), loadHeat()]);
       tick++;
       const [o, h] = await Promise.all([getJSON('/v1/admin/overview'), fetch('/health', { cache: 'no-store' }).then((r) => r.json().then((b) => ({ ok: r.ok, body: b })))]);
       setHealth(h.ok ? 'ok' : 'bad', h.ok ? 'healthy · db connected' : `degraded · ${h.body.status}`);
       $('clock').textContent = new Date(o.now * 1000).toLocaleTimeString();
       renderKpis(o); renderRate(o); renderDevices(o);
-      await refreshSeries();
+      await Promise.all([refreshSeries(), tick % 2 === 0 ? refreshIncidents() : null]);
     } catch (e) {
       setHealth('bad', `unreachable · ${e.message}`);
     }

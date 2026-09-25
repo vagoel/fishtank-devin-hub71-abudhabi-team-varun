@@ -1,0 +1,3498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HeatGuard · Site operations</title>
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='8' fill='%23f97316'/%3E%3Cpath d='M16 6.5l8 3v6.2c0 5-3.4 8.6-8 10.3-4.6-1.7-8-5.3-8-10.3V9.5z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M11.5 16.5h2.6l1.5-3 2 5 1.4-2h2.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+/* ===================================================================
+   Tokens
+   =================================================================== */
+:root {
+  color-scheme: dark;
+  --bg: #0a0d12;
+  --bg-2: #0d1118;
+  --panel: #11161e;
+  --panel-2: #151b25;
+  --panel-3: #1b2230;
+  --border: #222a37;
+  --border-2: #2f3848;
+  --text: #e8ecf2;
+  --text-2: #a9b2c1;
+  --text-3: #6f7a8c;
+  --text-4: #465063;
+  --accent: #5b8def;
+  --brand: #f97316;
+  --ok: #22c55e;
+  --caution: #f59e0b;
+  --rest: #22d3ee;
+  --alert: #ef4444;
+  --offline: #6b7280;
+  --info: #60a5fa;
+  --purple: #a78bfa;
+  --orange: #fb923c;
+  --devin: #8b93ff;
+  --grid: rgba(148, 163, 184, .09);
+  --grid-2: rgba(148, 163, 184, .22);
+  --chart-a: #c7d0ff;
+  --chart-x: #f87171;
+  --chart-y: #4ade80;
+  --chart-z: #60a5fa;
+  --shadow: 0 16px 40px rgba(0, 0, 0, .5);
+  --r-lg: 14px;
+  --r: 12px;
+  --r-sm: 8px;
+  --font: -apple-system, "SF Pro Text", Inter, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef1f5;
+  --bg-2: #e7ebf1;
+  --panel: #ffffff;
+  --panel-2: #f6f8fb;
+  --panel-3: #eceff4;
+  --border: #dde2ea;
+  --border-2: #c8cfdb;
+  --text: #0f172a;
+  --text-2: #3f4a5c;
+  --text-3: #687285;
+  --text-4: #a3abb8;
+  --accent: #2563eb;
+  --ok: #16a34a;
+  --caution: #d97706;
+  --rest: #0891b2;
+  --alert: #dc2626;
+  --offline: #6b7280;
+  --info: #2563eb;
+  --purple: #7c3aed;
+  --orange: #ea580c;
+  --devin: #4f46e5;
+  --grid: rgba(15, 23, 42, .07);
+  --grid-2: rgba(15, 23, 42, .18);
+  --chart-a: #4338ca;
+  --chart-x: #dc2626;
+  --chart-y: #16a34a;
+  --chart-z: #2563eb;
+  --shadow: 0 16px 40px rgba(15, 23, 42, .18);
+}
+
+/* Tone helpers: set --tone, components read it */
+.t-ok { --tone: var(--ok); }
+.t-caution { --tone: var(--caution); }
+.t-rest { --tone: var(--rest); }
+.t-alert { --tone: var(--alert); }
+.t-offline { --tone: var(--offline); }
+.t-info { --tone: var(--info); }
+.t-devin { --tone: var(--devin); }
+.t-muted { --tone: var(--text-3); }
+
+/* ===================================================================
+   Base
+   =================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { font-size: 14px; }
+@media (min-width: 1700px) { html { font-size: 15px; } }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 1rem/1.45 var(--font);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+button, input { font: inherit; color: inherit; }
+h1, h2, h3, p { margin: 0; }
+a { color: var(--accent); }
+.mono { font-family: var(--mono); font-size: .92em; }
+.dim { color: var(--text-3); }
+.spacer { flex: 1; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+.label, .section-title {
+  font-size: .7rem;
+  font-weight: 650;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.kicker {
+  display: flex; align-items: center; gap: 7px;
+  font-size: .7rem; font-weight: 650; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-3);
+}
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); animation: breathe 2s ease-in-out infinite; }
+
+/* ===================================================================
+   Buttons & controls
+   =================================================================== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 14px;
+  border-radius: 9px; border: 1px solid var(--border-2);
+  background: var(--panel-3); color: var(--text);
+  font-size: .86rem; font-weight: 560; white-space: nowrap;
+  cursor: pointer; transition: background .12s, border-color .12s, opacity .12s;
+}
+.btn:hover { background: color-mix(in srgb, var(--text) 8%, var(--panel-3)); }
+.btn:disabled, .btn.busy { opacity: .55; pointer-events: none; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: .8rem; border-radius: 7px; }
+.btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+.btn.primary:hover { background: color-mix(in srgb, #fff 10%, var(--accent)); }
+.btn.ghost { background: transparent; }
+.btn.ghost:hover { background: var(--panel-3); }
+.btn.cool { color: var(--rest); border-color: color-mix(in srgb, var(--rest) 45%, transparent); background: color-mix(in srgb, var(--rest) 10%, transparent); }
+.btn.cool:hover { background: color-mix(in srgb, var(--rest) 18%, transparent); }
+.btn.devin { color: var(--devin); border-color: color-mix(in srgb, var(--devin) 45%, transparent); background: color-mix(in srgb, var(--devin) 10%, transparent); }
+.btn.devin:hover { background: color-mix(in srgb, var(--devin) 18%, transparent); }
+.btn svg { width: 14px; height: 14px; }
+
+.icon-btn {
+  display: inline-grid; place-items: center;
+  width: 32px; height: 28px; padding: 0;
+  border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--text-2); cursor: pointer;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--border-2); }
+.icon-btn svg { width: 16px; height: 16px; }
+
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 9px; background: var(--panel-3); border: 1px solid var(--border); }
+.seg button {
+  border: 0; background: transparent; padding: 3px 12px; border-radius: 6px;
+  font-size: .8rem; font-weight: 600; color: var(--text-2); cursor: pointer;
+}
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--border-2); }
+.seg button .n { color: var(--text-3); font-weight: 500; margin-left: 4px; }
+
+.chip-toggle {
+  height: 28px; padding: 0 11px; border-radius: 8px;
+  border: 1px solid var(--border); background: transparent;
+  font-size: .8rem; font-weight: 600; color: var(--text-2); cursor: pointer;
+}
+.chip-toggle:hover { color: var(--text); border-color: var(--border-2); }
+.chip-toggle.on { color: var(--text); background: var(--panel-3); border-color: var(--border-2); }
+
+.switch {
+  position: relative; width: 38px; height: 22px; padding: 0; flex: none;
+  border-radius: 99px; border: 1px solid var(--border-2); background: var(--panel-3); cursor: pointer;
+}
+.switch i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-3); transition: transform .15s, background .15s; }
+.switch[aria-checked="true"] { background: color-mix(in srgb, var(--ok) 28%, var(--panel-3)); border-color: color-mix(in srgb, var(--ok) 60%, transparent); }
+.switch[aria-checked="true"] i { transform: translateX(16px); background: var(--ok); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 9px; border-radius: 7px;
+  font-size: .76rem; font-weight: 650;
+  color: var(--tone, var(--text-2));
+  background: color-mix(in srgb, var(--tone, var(--text-3)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone, var(--text-3)) 38%, transparent);
+  white-space: nowrap;
+}
+.tag {
+  display: inline-flex; align-items: center;
+  font-size: .64rem; font-weight: 700; letter-spacing: .08em;
+  padding: 2px 6px; border-radius: 5px;
+  color: var(--text-3); border: 1px solid var(--border-2);
+}
+.tag-live { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.tag-sim { color: var(--text-2); background: var(--panel-3); }
+
+/* ===================================================================
+   Top bar
+   =================================================================== */
+.topbar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px;
+  padding: 12px 24px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand-mark { width: 32px; height: 32px; flex: none; }
+.wordmark { font-size: 1.2rem; font-weight: 750; letter-spacing: -.015em; line-height: 1.1; }
+.tagline { font-size: .78rem; color: var(--text-3); }
+.site-clock { display: flex; flex-direction: column; padding-left: 22px; border-left: 1px solid var(--border); min-width: 0; }
+.site-name { font-weight: 620; font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clock { display: flex; align-items: baseline; gap: 8px; }
+.clock-time { font-family: var(--mono); font-size: 1.05rem; font-weight: 600; }
+.clock-sub { font-size: .76rem; color: var(--text-3); }
+.pills { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 28px; padding: 0 11px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--panel);
+  font-size: .78rem; white-space: nowrap;
+}
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--offline); flex: none; }
+.pill-k { color: var(--text-3); }
+.pill-v { font-weight: 620; }
+.pill.tone-ok .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.pill.tone-devin .dot { background: var(--devin); box-shadow: 0 0 0 3px color-mix(in srgb, var(--devin) 20%, transparent); }
+.pill.tone-warn { border-color: color-mix(in srgb, var(--caution) 50%, var(--border)); }
+.pill.tone-warn .dot { background: var(--caution); animation: blink 1s ease-in-out infinite; }
+.pill.tone-warn .pill-v { color: var(--caution); }
+.pill.tone-bad { border-color: color-mix(in srgb, var(--alert) 50%, var(--border)); }
+.pill.tone-bad .dot { background: var(--alert); }
+.pill.tone-muted .pill-v { color: var(--text-2); font-weight: 520; }
+.pill.warp { color: var(--caution); font-weight: 700; background: color-mix(in srgb, var(--caution) 12%, var(--panel)); border-color: color-mix(in srgb, var(--caution) 50%, transparent); }
+.pill.mock { color: var(--purple); font-weight: 700; border-color: color-mix(in srgb, var(--purple) 50%, transparent); }
+#btn-mute.muted { color: var(--text-4); }
+#btn-mute.armed { color: var(--text-2); }
+
+/* ===================================================================
+   Layout
+   =================================================================== */
+.main { display: grid; gap: 16px; padding: 20px 24px 40px; max-width: 2200px; margin: 0 auto; }
+.card {
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+}
+.card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; margin-bottom: 14px; }
+.card-title { font-size: 1.02rem; font-weight: 650; letter-spacing: -.005em; }
+.card-sub { font-size: .8rem; color: var(--text-3); }
+
+/* ===================================================================
+   Site conditions
+   =================================================================== */
+.site-grid { display: grid; grid-template-columns: 230px minmax(0, 1fr) 300px; gap: 28px; }
+.wbgt { display: flex; flex-direction: column; gap: 10px; padding-right: 28px; border-right: 1px solid var(--border); }
+.wbgt-num { font-size: 4.1rem; font-weight: 720; line-height: .95; letter-spacing: -.035em; color: var(--tone, var(--text)); }
+.wbgt-num small { font-size: 1.4rem; font-weight: 600; letter-spacing: 0; margin-left: 4px; color: var(--text-2); }
+.cat-chip {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: 8px;
+  font-weight: 700; font-size: .95rem;
+  color: var(--tone, var(--text-2));
+  background: color-mix(in srgb, var(--tone, var(--text-3)) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone, var(--text-3)) 45%, transparent);
+}
+.cat-chip i { width: 10px; height: 10px; border-radius: 3px; background: var(--tone, var(--text-3)); }
+.wbgt-foot { margin-top: auto; font-size: .78rem; color: var(--text-3); line-height: 1.5; }
+.cond { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.metric { padding: 10px 12px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); min-width: 0; }
+.metric .val { font-size: 1.45rem; font-weight: 640; line-height: 1.2; margin-top: 2px; white-space: nowrap; }
+.metric .val small { font-size: .78rem; font-weight: 500; color: var(--text-3); margin-left: 3px; }
+.policy-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.policy-table { width: calc(100% + 10px); margin: 0 -5px; border-collapse: separate; border-spacing: 5px; table-layout: fixed; }
+.policy-table th { font-weight: 600; font-size: .78rem; color: var(--text-3); text-align: center; padding: 0 0 2px; }
+.policy-table th[scope="row"] { text-align: left; color: var(--text-2); font-size: .84rem; width: 128px; }
+.pc {
+  position: relative; text-align: center;
+  padding: 9px 8px; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  font-size: .84rem; color: var(--text-2); white-space: nowrap;
+}
+.pc b { font-size: 1.12rem; font-weight: 680; color: var(--text); }
+.pc .sep { color: var(--text-4); margin: 0 5px; }
+.pc.stop { background: color-mix(in srgb, var(--alert) 14%, var(--panel-2)); border-color: color-mix(in srgb, var(--alert) 50%, transparent); color: var(--alert); font-weight: 750; letter-spacing: .06em; }
+.pc.hl { outline: 2px solid var(--text-2); outline-offset: -1px; }
+.pc-live { position: absolute; top: -8px; right: 6px; font-size: .58rem; font-weight: 750; letter-spacing: .08em; padding: 1px 5px; border-radius: 4px; background: var(--text); color: var(--bg); }
+.site-foot { display: flex; flex-direction: column; gap: 6px; }
+.midday { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: .86rem; }
+.midday .mid-k { font-weight: 640; }
+.cite { font-size: .76rem; color: var(--text-3); }
+
+.demo {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 14px 16px; border-radius: 12px;
+  background: var(--bg-2); border: 1px dashed var(--border-2);
+  font-size: .84rem;
+}
+.demo-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.demo-group { display: flex; flex-direction: column; gap: 7px; }
+.demo-label { font-size: .78rem; font-weight: 620; color: var(--text-2); }
+.field-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.field { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: .78rem; }
+.field input[type="number"] {
+  width: 62px; height: 30px; padding: 0 8px;
+  border-radius: 7px; border: 1px solid var(--border-2); background: var(--panel);
+  font-family: var(--mono); font-size: .86rem; color: var(--text);
+}
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-2); cursor: pointer; }
+.check input { accent-color: var(--caution); width: 15px; height: 15px; margin: 0; }
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.demo-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.override-state { font-size: .76rem; color: var(--text-3); }
+.override-state.on { color: var(--caution); font-weight: 600; }
+
+/* ===================================================================
+   Live wearable + alerts row
+   =================================================================== */
+.row-live { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; min-height: 640px; }
+.live-col { display: grid; gap: 16px; align-content: start; min-width: 0; }
+#live-list:empty { display: none; }
+.empty-live {
+  min-height: 560px; display: grid; place-content: center; justify-items: center; gap: 12px;
+  text-align: center; padding: 40px;
+}
+.empty-live svg { width: 84px; height: 84px; color: var(--text-4); }
+.empty-live h3 { font-size: 1.25rem; font-weight: 650; }
+.empty-live p { color: var(--text-3); max-width: 440px; }
+
+.live-card { padding: 0; overflow: hidden; container-type: inline-size; transition: border-color .2s, box-shadow .2s; }
+.live-card.is-alert { border-color: color-mix(in srgb, var(--alert) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--alert) 50%, transparent); }
+.live-card.ping { animation: ping 1s ease-out 2; }
+.lc-head { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.avatar {
+  width: 46px; height: 46px; flex: none; border-radius: 12px;
+  display: grid; place-items: center;
+  background: var(--panel-3); border: 1px solid var(--border-2);
+  font-weight: 700; color: var(--text-2);
+}
+.lc-ident { min-width: 0; display: grid; gap: 2px; }
+.lc-name { font-size: 1.3rem; font-weight: 680; letter-spacing: -.01em; line-height: 1.2; }
+.lc-meta { font-size: .85rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lc-head-right { margin-left: auto; display: grid; justify-items: end; gap: 6px; }
+.lc-updated { font-size: .74rem; color: var(--text-3); }
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 10px; border-radius: 8px;
+  font-size: .76rem; font-weight: 750; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--tone); background: color-mix(in srgb, var(--tone) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 42%, transparent);
+  white-space: nowrap;
+}
+.status-badge i { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
+.status-badge.big { font-size: 1.1rem; padding: 9px 18px; border-radius: 10px; gap: 10px; }
+.status-badge.big i { width: 10px; height: 10px; }
+.status-badge.t-alert i { animation: blink .8s ease-in-out infinite; }
+
+.lc-body { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(0, 1.4fr); }
+.lc-phase { padding: 18px 20px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.phase-name { font-size: 1.75rem; font-weight: 760; letter-spacing: .01em; line-height: 1.1; color: var(--tone); }
+.phase-reason { font-size: .86rem; color: var(--text-2); margin-top: -4px; }
+.budget, .cool { display: grid; gap: 7px; margin-top: 4px; }
+.budget-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.budget-num { font-size: .9rem; color: var(--text-2); white-space: nowrap; }
+.budget-num b { font-size: 1.2rem; color: var(--text); font-weight: 680; }
+.bar { position: relative; height: 10px; border-radius: 99px; background: var(--panel-3); overflow: hidden; }
+.bar > div { height: 100%; border-radius: inherit; background: var(--tone); }
+.bar .tick80 { position: absolute; left: 80%; top: 0; bottom: 0; width: 2px; background: var(--panel); }
+.bar-caption { font-size: .78rem; color: var(--text-3); }
+.countdown { font-family: var(--mono); font-size: 3rem; font-weight: 640; line-height: 1; color: var(--rest); letter-spacing: -.02em; }
+.stop-note {
+  font-size: .86rem; color: var(--alert); padding: 10px 12px; border-radius: 9px;
+  background: color-mix(in srgb, var(--alert) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--alert) 35%, transparent);
+}
+
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--border); align-content: stretch; }
+.stat { background: var(--panel); padding: 13px 15px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stat .v { font-size: 1.35rem; font-weight: 640; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat .v small { font-size: .78rem; color: var(--text-3); font-weight: 500; margin-left: 3px; }
+.stat .v.txt { font-size: 1rem; font-weight: 600; white-space: normal; }
+.stat .s { font-size: .76rem; color: var(--text-3); }
+.batt { display: inline-block; position: relative; width: 26px; height: 13px; border: 1.5px solid var(--text-3); border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.batt::after { content: ""; position: absolute; right: -4px; top: 3px; width: 2px; height: 4px; border-radius: 0 1px 1px 0; background: var(--text-3); }
+.batt i { position: absolute; left: 1px; top: 1px; bottom: 1px; border-radius: 1px; background: var(--tone, var(--ok)); }
+.gauge { position: relative; width: 84px; height: 46px; color: var(--tone); }
+.gauge svg { width: 84px; height: 46px; display: block; overflow: visible; }
+.gauge .g-track { fill: none; stroke: var(--panel-3); stroke-width: 7; stroke-linecap: round; }
+.gauge .g-val { fill: none; stroke: currentColor; stroke-width: 7; stroke-linecap: round; }
+.gauge-num { position: absolute; left: 0; right: 0; bottom: -2px; text-align: center; font-size: 1.15rem; font-weight: 700; color: var(--text); }
+.wl { --tone: var(--text-2); }
+.wl-light { --tone: var(--ok); }
+.wl-moderate { --tone: var(--caution); }
+.wl-heavy { --tone: var(--orange); }
+.wl-rest { --tone: var(--rest); }
+
+.motion { border-top: 1px solid var(--border); padding: 14px 20px 16px; }
+.motion-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.motion-src { font-size: .74rem; color: var(--text-3); }
+.motion-body { display: grid; grid-template-columns: minmax(0, 1fr) 176px; gap: 18px; }
+.charts { display: grid; gap: 10px; min-width: 0; }
+.chart { min-width: 0; }
+.chart-cap { display: flex; align-items: center; gap: 10px; font-size: .76rem; color: var(--text-2); margin-bottom: 3px; }
+.chart-cap .dim { margin-left: auto; }
+.chart canvas { display: block; width: 100%; height: 118px; }
+.legend { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); }
+.legend i { display: inline-block; width: 12px; height: 2px; border-radius: 2px; margin-left: 6px; }
+.legend .lx { background: var(--chart-x); }
+.legend .ly { background: var(--chart-y); }
+.legend .lz { background: var(--chart-z); }
+.readouts { display: grid; gap: 1px; align-content: start; margin: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--border); }
+.readouts > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 9px 12px; background: var(--panel-2); }
+.readouts dt { font-size: .78rem; color: var(--text-3); }
+.readouts dd { margin: 0; font-family: var(--mono); font-size: .98rem; font-weight: 600; white-space: nowrap; }
+.readouts dd small { font-family: var(--font); font-size: .72rem; color: var(--text-3); margin-left: 3px; font-weight: 500; }
+.lc-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--panel-2); }
+
+@container (max-width: 700px) {
+  .lc-body { grid-template-columns: 1fr; }
+  .lc-phase { border-right: 0; border-bottom: 1px solid var(--border); }
+  .motion-body { grid-template-columns: 1fr; }
+  .readouts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .readouts > div { flex-direction: column; align-items: flex-start; gap: 2px; }
+}
+
+/* Alerts */
+.alerts-card { position: relative; padding: 0; min-height: 0; }
+.alerts-inner { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.alerts-head { padding: 16px 18px 12px; border-bottom: 1px solid var(--border); display: grid; gap: 10px; }
+.alerts-head .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.alert-count { font-size: .8rem; color: var(--text-3); }
+.alert-list { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.alert-empty { padding: 48px 20px; text-align: center; color: var(--text-3); }
+.alert {
+  flex: none;
+  display: grid; grid-template-columns: 4px minmax(0, 1fr);
+  border-radius: 12px; overflow: hidden;
+  background: var(--panel-2); border: 1px solid var(--border);
+}
+.alert.closed { opacity: .6; }
+.alert.flash { animation: flash .75s ease-in-out 4; }
+.sev-bar { background: var(--tone); }
+.sev-critical { --tone: var(--alert); }
+.sev-warning { --tone: var(--caution); }
+.sev-info { --tone: var(--info); }
+.alert-body { padding: 11px 14px 12px; display: grid; gap: 5px; min-width: 0; }
+.alert-top { display: flex; align-items: center; gap: 7px; }
+.sev-label { font-size: .68rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; color: var(--tone); }
+.alert-title { font-size: 1rem; font-weight: 640; }
+.alert-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: .8rem; color: var(--text-2); }
+.alert-sub .sep { width: 3px; height: 3px; border-radius: 50%; background: var(--text-4); }
+.linklike { border: 0; background: none; padding: 0; color: var(--text); font-weight: 600; cursor: pointer; text-decoration: underline; text-decoration-color: var(--text-4); text-underline-offset: 3px; }
+.linklike:hover { text-decoration-color: var(--text-2); }
+.alert-msg { font-size: .86rem; color: var(--text-2); }
+.alert-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.state-chip { font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; color: var(--tone); border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent); background: color-mix(in srgb, var(--tone) 10%, transparent); white-space: nowrap; }
+.st-open { --tone: var(--text); }
+.st-acknowledged { --tone: var(--caution); }
+.st-resolved { --tone: var(--ok); }
+.st-false_alarm { --tone: var(--text-3); }
+
+.devin {
+  position: relative; overflow: hidden;
+  display: grid; gap: 8px; margin-top: 6px; padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--devin) 6%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--devin) 28%, var(--border));
+}
+.devin.devin-local { background: var(--panel); border-color: var(--border-2); }
+.devin.devin-queued::before, .devin.devin-running::before {
+  content: ""; position: absolute; top: 0; left: -35%; width: 35%; height: 2px;
+  background: var(--devin); animation: scan 1.5s linear infinite;
+}
+.devin-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: .8rem; }
+.engine { font-size: .66rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; padding: 3px 7px; border-radius: 6px; }
+.engine-devin { color: var(--devin); background: color-mix(in srgb, var(--devin) 16%, transparent); }
+.engine-local { color: var(--text-2); background: var(--panel-3); }
+.devin-status { display: inline-flex; align-items: center; gap: 7px; color: var(--text-2); font-weight: 600; }
+.devin-status.err { color: var(--alert); }
+.dots { display: inline-flex; gap: 3px; }
+.dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--devin); animation: dot 1.2s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: .15s; }
+.dots i:nth-child(3) { animation-delay: .3s; }
+.devin-link { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--devin); text-decoration: none; }
+.devin-link:hover { text-decoration: underline; }
+.devin-link svg { width: 12px; height: 12px; }
+.verdict { font-size: .74rem; font-weight: 750; padding: 3px 8px; border-radius: 6px; color: var(--tone); background: color-mix(in srgb, var(--tone) 15%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 42%, transparent); }
+.v-red { --tone: var(--alert); }
+.v-green { --tone: var(--ok); }
+.v-purple { --tone: var(--purple); }
+.v-amber { --tone: var(--caution); }
+.v-orange { --tone: var(--orange); }
+.v-grey { --tone: var(--text-2); }
+.conf { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; color: var(--text-2); }
+.conf-bar { width: 44px; height: 5px; border-radius: 9px; background: var(--panel-3); overflow: hidden; }
+.conf-bar i { display: block; height: 100%; background: var(--text-2); }
+.devin-summary { font-size: .86rem; color: var(--text); }
+.devin details summary { cursor: pointer; font-size: .78rem; font-weight: 620; color: var(--text-2); }
+.devin-lists { display: grid; gap: 8px; margin-top: 8px; }
+.devin-lists h4 { margin: 0 0 3px; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.devin-lists ul { margin: 0; padding-left: 18px; font-size: .83rem; color: var(--text-2); display: grid; gap: 2px; }
+.thr { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.thr caption { text-align: left; font-size: .68rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); padding-bottom: 4px; }
+.thr th { text-align: left; font-weight: 600; color: var(--text-3); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
+.thr td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text-2); }
+.thr td.nowrap { white-space: nowrap; }
+.thr b { color: var(--text); }
+.devin-error { font-size: .82rem; color: var(--alert); }
+
+/* Fleet */
+.fleet-head { align-items: flex-end; }
+.fleet-title { font-size: 1.25rem; font-weight: 700; letter-spacing: -.01em; }
+.count-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.count-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--panel-2);
+  cursor: pointer; color: var(--text);
+}
+.count-chip:hover { border-color: var(--border-2); }
+.count-chip .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--tone); }
+.count-chip .k { font-size: .8rem; color: var(--text-2); }
+.count-chip .v { font-size: 1.08rem; font-weight: 700; }
+.count-chip.on { border-color: var(--tone); background: color-mix(in srgb, var(--tone) 12%, var(--panel-2)); }
+.fleet-wrap { position: relative; min-height: 60px; }
+#fleet-canvas { display: block; cursor: pointer; }
+.fleet-foot { margin-top: 12px; font-size: .76rem; color: var(--text-3); }
+.tooltip {
+  position: fixed; z-index: 60; pointer-events: none;
+  padding: 8px 10px; border-radius: 9px;
+  background: var(--panel-3); border: 1px solid var(--border-2); box-shadow: var(--shadow);
+  font-size: .8rem; line-height: 1.4;
+}
+.tooltip b { font-family: var(--mono); }
+.tooltip .tt-st { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; color: var(--text-2); }
+.tooltip .tt-st i { width: 9px; height: 9px; border-radius: 3px; background: var(--tone); }
+.tooltip .tt-hint { color: var(--text-3); font-size: .72rem; }
+
+/* Drawer */
+.scrim { position: fixed; inset: 0; z-index: 45; background: rgba(3, 6, 10, .45); }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 50;
+  width: min(460px, 94vw);
+  display: flex; flex-direction: column;
+  background: var(--panel); border-left: 1px solid var(--border-2); box-shadow: var(--shadow);
+  transform: translateX(104%); transition: transform .22s ease;
+}
+.drawer.open { transform: none; }
+.drawer-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.drawer-head h3 { font-size: 1.3rem; font-weight: 680; }
+.drawer-head .icon-btn { margin-left: auto; }
+.drawer-body { flex: 1; overflow-y: auto; }
+.drawer-body .dr-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.drawer-body .dr-meta { font-size: .86rem; color: var(--text-2); }
+.drawer-body .lc-phase { border-right: 0; border-bottom: 1px solid var(--border); }
+.drawer-body .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.drawer-foot { display: flex; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--panel-2); }
+.drawer-msg { padding: 40px 20px; color: var(--text-3); text-align: center; }
+.drawer-msg.err { color: var(--alert); }
+
+/* Modals */
+.modal { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px; background: rgba(3, 6, 10, .6); }
+.modal-card { width: min(980px, 96vw); max-height: 92vh; overflow: auto; background: var(--panel); border: 1px solid var(--border-2); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.modal-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { font-size: 1.1rem; font-weight: 660; }
+.modal-head .icon-btn { margin-left: auto; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); }
+.trace-body { padding: 16px 20px 20px; display: grid; gap: 14px; }
+.trace-body .chart canvas { height: 190px; }
+.trace-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.trace-msg { color: var(--text-3); text-align: center; padding: 8px; }
+.trace-msg.err { color: var(--alert); }
+.ask-card { width: min(420px, 94vw); }
+.ask-body { padding: 16px 20px; display: grid; gap: 10px; }
+.ask-body label { display: grid; gap: 6px; font-size: .84rem; color: var(--text-2); }
+.ask-body input {
+  height: 40px; padding: 0 12px; border-radius: 9px;
+  border: 1px solid var(--border-2); background: var(--panel-2);
+  font-size: 1rem; color: var(--text);
+}
+.presets { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Toasts */
+.toasts { position: fixed; right: 20px; bottom: 20px; z-index: 90; display: grid; gap: 8px; justify-items: end; }
+.toast {
+  display: flex; align-items: flex-start; gap: 10px;
+  min-width: 260px; max-width: 440px; padding: 11px 14px;
+  border-radius: 10px; background: var(--panel-3); border: 1px solid var(--border-2);
+  border-left: 3px solid var(--tone, var(--info)); box-shadow: var(--shadow);
+  font-size: .86rem;
+  opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s;
+}
+.toast.in { opacity: 1; transform: none; }
+.toast.ok { --tone: var(--ok); }
+.toast.error { --tone: var(--alert); }
+.toast.info { --tone: var(--info); }
+
+/* Right column: alerts + WhatsApp escalations */
+.side-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; }
+.side-col .alerts-card { flex: 1 1 0; min-height: 420px; }
+.wa-chip { --tone: var(--text-3); }
+.wa-chip.sent { --tone: var(--ok); }
+.wa-chip.failed { --tone: var(--alert); }
+.wa-chip.dry_run { --tone: var(--text-2); }
+.wa-chip.pending { --tone: var(--caution, #f59e0b); }
+
+/* Voice assistant */
+.voice-card { padding: 0; display: flex; flex-direction: column; }
+.panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.panel-head .chip { margin-left: auto; }
+.voice-log { height: 330px; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 16px; }
+.voice-empty { margin: auto; text-align: center; color: var(--text-3); max-width: 360px; display: grid; justify-items: center; gap: 10px; }
+.voice-empty svg { width: 40px; height: 40px; color: var(--text-4); }
+.turn { flex: none; display: grid; gap: 6px; }
+.turn-meta { font-size: .72rem; color: var(--text-3); display: flex; gap: 8px; align-items: center; }
+.turn-meta::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.bubble {
+  max-width: 82%; padding: 9px 13px; border-radius: 14px;
+  font-size: .92rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.bubble .who { display: block; font-size: .66rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; unicode-bidi: isolate; }
+.bubble.worker { justify-self: start; background: var(--panel-3); border: 1px solid var(--border-2); border-bottom-left-radius: 4px; }
+.bubble.worker .who { color: var(--text-3); }
+.bubble.assistant { justify-self: end; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); border-bottom-right-radius: 4px; }
+.bubble.assistant .who { color: var(--accent); }
+.bubble.partial .txt::after { content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 3px; vertical-align: -2px; background: currentColor; opacity: .6; animation: blink .9s steps(2) infinite; }
+.tool-line {
+  justify-self: center; display: inline-flex; align-items: center; gap: 8px;
+  padding: 3px 10px; border-radius: 99px;
+  font-family: var(--mono); font-size: .76rem; color: var(--text-2);
+  background: var(--bg-2); border: 1px dashed var(--border-2);
+  max-width: 94%; overflow-wrap: anywhere;
+}
+.tool-line b { font-family: var(--font); font-size: .64rem; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+
+/* WhatsApp escalations */
+.wa-card { padding: 0; display: flex; flex-direction: column; flex: none; max-height: 330px; }
+.wa-list { overflow-y: auto; min-height: 0; }
+.wa-empty { padding: 22px 18px; color: var(--text-3); font-size: .86rem; text-align: center; }
+.wa-item { flex: none; border-bottom: 1px solid var(--border); }
+.wa-item:last-child { border-bottom: 0; }
+.wa-row {
+  width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: center;
+  padding: 10px 18px; border: 0; background: transparent; text-align: left; cursor: pointer; color: var(--text);
+}
+.wa-row:hover { background: var(--panel-2); }
+.wa-time { font-family: var(--mono); font-size: .8rem; color: var(--text-3); }
+.wa-to { font-family: var(--mono); font-size: .82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-flags { display: inline-flex; align-items: center; gap: 6px; }
+.wa-first { grid-column: 2 / 4; font-size: .84rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-map { grid-column: 1 / 2; font-size: .78rem; font-weight: 600; color: var(--accent); text-decoration: none; display: inline-flex; align-items: center; gap: 3px; }
+.wa-map:hover { text-decoration: underline; }
+.wa-map svg { width: 11px; height: 11px; }
+.wa-full { margin: 0 18px 12px; padding: 10px 12px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--border); font-size: .84rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wa-err { margin: 0 18px 12px; font-size: .8rem; color: var(--alert); }
+
+/* Alarm border */
+#alarm-border {
+  position: fixed; inset: 0; z-index: 100; pointer-events: none; opacity: 0;
+  box-shadow: inset 0 0 0 4px var(--alert), inset 0 0 70px color-mix(in srgb, var(--alert) 35%, transparent);
+}
+#alarm-border.on { animation: alarm .9s ease-in-out 3; }
+
+@keyframes alarm { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+@keyframes flash { 0%, 100% { background: var(--panel-2); } 50% { background: color-mix(in srgb, var(--alert) 22%, var(--panel-2)); } }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes dot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@keyframes scan { from { left: -35%; } to { left: 100%; } }
+
+/* ===================================================================
+   Responsive
+   =================================================================== */
+@media (max-width: 1400px) {
+  .site-grid { grid-template-columns: 210px minmax(0, 1fr); }
+  .demo { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 14px 28px; }
+  .demo-title { width: 100%; }
+}
+@media (max-width: 1280px) {
+  .tagline { display: none; }
+  .metric .val { font-size: 1.25rem; }
+}
+@media (max-width: 900px) {
+  .topbar { position: static; padding: 12px 14px; }
+  .site-clock { padding-left: 0; border-left: 0; }
+  .pills { margin-left: 0; justify-content: flex-start; }
+  .main { padding: 14px; }
+  .site-grid, .row-live { grid-template-columns: 1fr; }
+  .row-live { min-height: 0; }
+  .wbgt { border-right: 0; padding-right: 0; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .alerts-card, .side-col .alerts-card { height: 75vh; flex: none; }
+  .count-chips { margin-left: 0; }
+  .trace-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body>
+<div id="alarm-border" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="1" y="1" width="30" height="30" rx="8" fill="var(--brand)"/>
+      <path d="M16 6.5l8 3v6.2c0 5-3.4 8.6-8 10.3-4.6-1.7-8-5.3-8-10.3V9.5z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M11.5 16.5h2.6l1.5-3 2 5 1.4-2h2.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <div class="wordmark">HeatGuard</div>
+      <div class="tagline">Heat &amp; fall safety for outdoor workers</div>
+    </div>
+  </div>
+  <div class="site-clock">
+    <div class="site-name" id="tb-site">Connecting to site…</div>
+    <div class="clock"><span class="clock-time" id="clock-time">--:--:--</span><span class="clock-sub" id="clock-sub">Dubai · GST</span></div>
+  </div>
+  <div class="pills">
+    <span class="pill mock" id="pill-mock" hidden title="Fake data generated in the page (?mock=1)">Mock data</span>
+    <span class="pill warp" id="pill-warp" hidden>Time warp ×1</span>
+    <span class="pill tone-muted" id="pill-stream"><i class="dot"></i><span class="pill-k">Stream</span><span class="pill-v">Connecting</span></span>
+    <span class="pill tone-muted" id="pill-wearable"><i class="dot"></i><span class="pill-k">Wearable</span><span class="pill-v">—</span></span>
+    <span class="pill tone-muted" id="pill-voice"><i class="dot"></i><span class="pill-k">Voice</span><span class="pill-v">—</span></span>
+    <span class="pill tone-muted" id="pill-devin"><i class="dot"></i><span class="pill-k">Devin</span><span class="pill-v">—</span></span>
+    <span class="pill tone-muted" id="pill-whatsapp"><i class="dot"></i><span class="pill-k">WhatsApp</span><span class="pill-v">—</span></span>
+    <span class="pill tone-muted" id="pill-weather"><i class="dot"></i><span class="pill-k">Weather</span><span class="pill-v">—</span></span>
+    <button class="icon-btn" id="btn-mute" type="button" title="Alert sound"></button>
+    <button class="icon-btn" id="btn-theme" type="button" title="Switch light / dark theme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="main">
+  <!-- Row 1: site conditions -->
+  <section class="card site-card" aria-labelledby="site-title">
+    <div class="card-head">
+      <h2 class="card-title" id="site-title">Site conditions</h2>
+      <span class="card-sub" id="site-coords"></span>
+    </div>
+    <div class="site-grid">
+      <div class="wbgt" id="wbgt">
+        <div class="label">WBGT (estimated)</div>
+        <div class="wbgt-num"><span id="wbgt-val">—</span><small>°C</small></div>
+        <div class="cat-chip" id="wbgt-cat"><i></i><span>—</span></div>
+        <div class="wbgt-foot"><span id="wbgt-src">Source —</span><br>Updated <span class="rel" id="site-updated">—</span></div>
+      </div>
+      <div class="cond">
+        <div class="metrics">
+          <div class="metric"><div class="label">Air temp</div><div class="val"><span id="m-temp">—</span><small>°C</small></div></div>
+          <div class="metric"><div class="label">Humidity</div><div class="val"><span id="m-rh">—</span><small>% RH</small></div></div>
+          <div class="metric"><div class="label">Feels like</div><div class="val"><span id="m-app">—</span><small>°C</small></div></div>
+          <div class="metric"><div class="label">Wind</div><div class="val"><span id="m-wind">—</span><small>m/s</small></div></div>
+          <div class="metric"><div class="label">Solar</div><div class="val"><span id="m-solar">—</span><small>W/m²</small></div></div>
+        </div>
+        <div class="policy">
+          <div class="policy-head"><span class="section-title">Work / rest limits per hour</span><span class="card-sub">minutes, by workload</span></div>
+          <table class="policy-table">
+            <thead><tr><th></th><th>Light</th><th>Moderate</th><th>Heavy</th></tr></thead>
+            <tbody id="policy-body"><tr><td colspan="4" class="dim">Waiting for site data…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="site-foot">
+          <div class="midday" id="midday"></div>
+          <div class="cite">Limits: ACGIH TLV heat-stress screening (WBGT est. from temp + RH + solar)</div>
+        </div>
+      </div>
+      <aside class="demo" aria-label="Demo controls">
+        <div class="demo-title"><span class="label">Demo controls</span><span class="override-state" id="override-state">Live weather</span></div>
+        <form class="demo-group" id="override-form" novalidate>
+          <span class="demo-label">Simulate heat</span>
+          <div class="field-row">
+            <label class="field">Temp <input type="number" id="ov-temp" value="46" step="0.5" min="-10" max="60"> °C</label>
+            <label class="field">RH <input type="number" id="ov-rh" value="45" step="1" min="0" max="100"> %</label>
+            <label class="check"><input type="checkbox" id="ov-sun" checked> Sun</label>
+          </div>
+          <div class="btn-row">
+            <button class="btn sm primary" type="submit" id="ov-apply">Apply</button>
+            <button class="btn sm ghost" type="button" id="ov-clear">Live weather</button>
+          </div>
+        </form>
+        <div class="demo-group">
+          <span class="demo-label">Time warp</span>
+          <div class="seg" id="warp-seg" role="group" aria-label="Time warp">
+            <button type="button" data-w="1">1×</button><button type="button" data-w="30">30×</button><button type="button" data-w="60">60×</button>
+          </div>
+        </div>
+        <div class="demo-group">
+          <div class="demo-row"><span class="demo-label">Sim incidents</span><button class="switch" type="button" id="sim-switch" role="switch" aria-checked="false" aria-label="Simulated incidents"><i></i></button></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Row 2: live wearable + voice (left), alerts + WhatsApp (right) -->
+  <div class="row-live">
+    <div class="live-col">
+      <section class="card empty-live" id="live-empty">
+        <div class="kicker">Live wearable</div>
+        <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+          <rect x="20" y="6" width="24" height="40" rx="5"/><rect x="25" y="12" width="14" height="16" rx="2"/><circle cx="32" cy="37" r="3"/>
+          <path d="M29 46v4h6v-4M32 50v4c0 3-2 5-6 5h-8" stroke-linecap="round"/>
+        </svg>
+        <h3 id="live-empty-title">No wearable connected — plug in the StickS3</h3>
+        <p id="live-empty-sub">Waiting for a HeatGuard wearable on USB serial. The simulated fleet and alerts keep running.</p>
+      </section>
+      <div class="live-col" id="live-list"></div>
+
+      <section class="card voice-card" aria-labelledby="voice-title">
+        <div class="panel-head">
+          <h2 class="card-title" id="voice-title">Wearable voice assistant</h2>
+          <span class="card-sub">Push-to-talk on the wrist</span>
+          <span class="chip t-muted" id="voice-status">—</span>
+        </div>
+        <div class="voice-log" id="voice-log" aria-live="polite">
+          <div class="voice-empty" id="voice-empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+            <div>Hold the side button on the wearable and ask a question.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="side-col">
+      <section class="card alerts-card" aria-labelledby="alerts-title">
+        <div class="alerts-inner">
+          <div class="alerts-head">
+            <div class="row">
+              <h2 class="card-title" id="alerts-title">Alerts</h2>
+              <span class="alert-count" id="alert-count"></span>
+            </div>
+            <div class="row" id="alert-filters">
+              <div class="seg" role="group" aria-label="Alert state">
+                <button type="button" data-f="open" class="on">Open<span class="n" id="n-open"></span></button>
+                <button type="button" data-f="all">All<span class="n" id="n-all"></span></button>
+              </div>
+              <button type="button" class="chip-toggle" data-t="liveOnly" aria-pressed="false">Live only</button>
+              <button type="button" class="chip-toggle" data-t="hideSim" aria-pressed="false">Hide simulated</button>
+            </div>
+          </div>
+          <div class="alert-list" id="alert-list"></div>
+          <div class="alert-empty" id="alert-empty" hidden>No alerts to show.</div>
+        </div>
+      </section>
+
+      <section class="card wa-card" aria-labelledby="wa-title">
+        <div class="panel-head">
+          <h2 class="card-title" id="wa-title">Escalations · call + WhatsApp</h2>
+          <span class="card-sub" id="wa-sub"></span>
+          <span class="chip t-muted" id="wa-status">—</span>
+        </div>
+        <div class="wa-list" id="wa-list"><div class="wa-empty">No escalations sent yet.</div></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Row 3: fleet -->
+  <section class="card fleet-card" aria-labelledby="fleet-title">
+    <div class="card-head fleet-head">
+      <div>
+        <h2 class="fleet-title" id="fleet-title">Fleet · — workers</h2>
+        <div class="card-sub">Simulated crews across the site, one tile per worker, refreshed every 2 s</div>
+      </div>
+      <div class="count-chips" id="fleet-counts"></div>
+    </div>
+    <div class="fleet-wrap" id="fleet-wrap"><canvas id="fleet-canvas" aria-label="Fleet status grid"></canvas></div>
+    <div class="fleet-foot">Hover a tile for the worker ID. Click it for details. Click a count to highlight that status.</div>
+  </section>
+</main>
+
+<div class="tooltip" id="tooltip" hidden></div>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="dr-title">
+  <header class="drawer-head">
+    <div><div class="kicker" id="dr-kicker">Worker</div><h3 id="dr-title">—</h3></div>
+    <button class="icon-btn" type="button" id="dr-close" aria-label="Close details">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </header>
+  <div class="drawer-body" id="dr-body"></div>
+  <footer class="drawer-foot">
+    <button class="btn cool" type="button" id="dr-rest">Send cool-down</button>
+    <button class="btn" type="button" id="dr-buzz">Buzz</button>
+  </footer>
+</aside>
+
+<div class="modal" id="trace-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="trace-title">
+    <header class="modal-head">
+      <div><div class="kicker" id="trace-kicker">Motion trace</div><h3 id="trace-title">—</h3></div>
+      <button class="icon-btn" type="button" id="trace-close" aria-label="Close trace">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="trace-body">
+      <div class="trace-stats" id="trace-stats"></div>
+      <div class="chart"><div class="chart-cap"><span>|a| acceleration magnitude</span><span class="dim">g · red line marks the event</span></div><canvas id="trace-a"></canvas></div>
+      <div class="chart"><div class="chart-cap"><span>Gyro</span><span class="legend"><i class="lx"></i>x<i class="ly"></i>y<i class="lz"></i>z</span><span class="dim">deg/s</span></div><canvas id="trace-g"></canvas></div>
+      <div class="trace-msg" id="trace-msg"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="ask-modal" hidden>
+  <form class="modal-card ask-card" id="ask-form" role="dialog" aria-modal="true" aria-labelledby="ask-title" novalidate>
+    <header class="modal-head"><h3 id="ask-title">—</h3></header>
+    <div class="ask-body">
+      <label><span id="ask-label">—</span><input id="ask-input" autocomplete="off" dir="auto"></label>
+      <div class="presets" id="ask-presets"></div>
+    </div>
+    <footer class="modal-foot">
+      <button class="btn ghost" type="button" id="ask-cancel">Cancel</button>
+      <button class="btn primary" type="submit" id="ask-ok">Send</button>
+    </footer>
+  </form>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+(function () {
+'use strict';
+
+/* =====================================================================
+   Config & helpers
+   ===================================================================== */
+const qs = new URLSearchParams(location.search);
+const MOCK = qs.get('mock') === '1';
+const API = '/api/v1';
+const STREAM_EVENTS = ['imu', 'worker', 'fleet', 'alert', 'site', 'config', 'voice', 'notify'];
+const WINDOW_MS = 10000;          // live motion window
+const RENDER_DELAY_MS = 160;      // draw slightly behind the newest sample so batches never leave a gap
+const MAX_RENDERED_ALERTS = 100;
+const MAX_KEPT_ALERTS = 400;
+const MAX_VOICE_TURNS = 60;
+const MAX_NOTIFICATIONS = 80;
+const MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = v => (v == null ? '' : String(v).replace(/[&<>"']/g, c => ESC_MAP[c]));
+const isNum = v => typeof v === 'number' && Number.isFinite(v);
+const fx = (v, d = 1) => (isNum(v) ? v.toFixed(d) : '—');
+const fi = v => (isNum(v) ? Math.round(v).toLocaleString('en-US') : '—');
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+function mmss(sec) {
+  sec = Math.max(0, Math.round(sec || 0));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+function relTime(ts) {
+  if (!isNum(ts)) return '—';
+  const d = Date.now() / 1000 - ts;
+  if (d < 5) return 'just now';
+  if (d < 60) return `${Math.floor(d)} s ago`;
+  if (d < 3600) return `${Math.floor(d / 60)} min ago`;
+  if (d < 86400) return `${Math.floor(d / 3600)} h ago`;
+  return `${Math.floor(d / 86400)} d ago`;
+}
+function initials(name) {
+  const p = String(name || '?').trim().split(/\s+/);
+  return ((p[0] || '?')[0] + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase();
+}
+function safeColor(c) {
+  if (typeof c !== 'string') return null;
+  c = c.trim();
+  return /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%a-z]+\))$/i.test(c) ? c : null;
+}
+function safeUrl(u) { return typeof u === 'string' && /^https?:\/\//i.test(u) ? u : null; }
+function storeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function storeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } }
+
+let dubaiClock, dubaiDate, dubaiHM;
+try {
+  dubaiClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+  dubaiDate = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', day: 'numeric', month: 'short' });
+  dubaiHM = dubaiClock;
+} catch (e) {
+  dubaiClock = dubaiDate = dubaiHM = new Intl.DateTimeFormat('en-GB');
+}
+const clockOf = ts => (isNum(ts) ? dubaiHM.format(new Date(ts * 1000)) : '—');
+
+const ICON_EXT = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5h5v5M9.5 2.5L3 9"/></svg>';
+const ICON_SOUND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg>';
+const ICON_MUTED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>';
+
+/* =====================================================================
+   Labels
+   ===================================================================== */
+const STATUS = {
+  ok: { label: 'OK', tone: 'ok' },
+  caution: { label: 'Caution', tone: 'caution' },
+  rest: { label: 'Resting', tone: 'rest' },
+  alert: { label: 'Alert', tone: 'alert' },
+  offline: { label: 'Offline', tone: 'offline' },
+};
+const STATUS_ORDER = ['ok', 'caution', 'rest', 'alert', 'offline'];
+const TILE = { o: 'ok', c: 'caution', r: 'rest', a: 'alert', x: 'offline' };
+const PHASE = {
+  work: { label: 'WORKING', tone: 'ok' },
+  rest: { label: 'COOL-DOWN', tone: 'rest' },
+  stop: { label: 'STOP WORK', tone: 'alert' },
+};
+const EVENT_LABEL = {
+  fall: 'Fall detected', fall_ok: 'Fall, worker OK', fall_noresp: 'Fall, no response',
+  tremor: 'Tremor', erratic: 'Erratic movement', inactivity: 'Inactivity',
+  inactivity_ok: 'Inactivity, worker OK', sos: 'SOS pressed', unwell: 'Reported unwell', impact: 'Impact',
+};
+const ALERT_TYPE = {
+  fall: 'Fall', tremor: 'Tremor', erratic: 'Erratic movement', inactivity: 'Inactivity', sos: 'SOS',
+  unwell: 'Unwell', heat_limit: 'Heat limit', heat_critical: 'Heat critical',
+  rest_violation: 'Rest violation', offline: 'Offline',
+};
+const ALERT_STATE = { open: 'Open', acknowledged: 'Acknowledged', resolved: 'Resolved', false_alarm: 'False alarm' };
+const VERDICT = {
+  true_fall: ['True fall', 'v-red'],
+  false_alarm: ['False alarm', 'v-green'],
+  tremor_or_seizure_like: ['Tremor / seizure-like', 'v-purple'],
+  erratic_movement: ['Erratic movement', 'v-amber'],
+  heat_illness_risk: ['Heat illness risk', 'v-orange'],
+  needs_human_review: ['Needs human review', 'v-grey'],
+};
+const WORKLOAD = { rest: 'Rest', light: 'Light', moderate: 'Moderate', heavy: 'Heavy' };
+const NOTIFY_STATUS = { sent: 'WhatsApp sent', dry_run: 'Dry run', failed: 'Escalation failed' };
+const CALL_TONE = { completed: 'sent', 'in-progress': 'pending', ringing: 'pending', queued: 'pending', initiated: 'pending',
+  busy: 'failed', 'no-answer': 'failed', failed: 'failed', canceled: 'failed', dry_run: 'dry_run' };
+const CALL_LABEL = { completed: 'Call answered', 'in-progress': 'On the call', ringing: 'Ringing', queued: 'Calling', initiated: 'Calling',
+  busy: 'Line busy', 'no-answer': 'No answer', failed: 'Call failed', canceled: 'Call canceled', dry_run: 'Call dry run' };
+
+/* =====================================================================
+   State
+   ===================================================================== */
+const S = {
+  site: null,
+  config: {},
+  live: new Map(),          // live worker id -> Worker
+  fleet: null,
+  alerts: new Map(),        // alert id -> Alert
+  voice: new Map(),         // voice entry id -> VoiceEntry
+  notifications: new Map(), // notification id -> Notification
+  stream: 'connecting',
+  synced: false,
+};
+const rings = new Map();     // worker id -> Ring (IMU)
+const liveCards = new Map(); // worker id -> card
+const C = {};                // resolved colour tokens for canvas drawing
+
+function readTokens() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ['ok', 'caution', 'rest', 'alert', 'offline', 'text', 'text-2', 'text-3', 'text-4',
+                   'grid', 'grid-2', 'panel', 'chart-a', 'chart-x', 'chart-y', 'chart-z', 'accent']) {
+    C[k] = cs.getPropertyValue('--' + k).trim();
+  }
+}
+
+/* =====================================================================
+   Transport: fetch + SSE (mock mode swaps both for in-page fakes)
+   ===================================================================== */
+let Mock = null;
+
+async function api(method, path, body) {
+  if (MOCK) return Mock.request(method, path, body);
+  const opts = { method, headers: { Accept: 'application/json' } };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  let res;
+  try {
+    res = await fetch(API + path, opts);
+  } catch (e) {
+    throw new Error('server unreachable');
+  }
+  const text = await res.text();
+  let data = null;
+  if (text) { try { data = JSON.parse(text); } catch (e) { data = null; } }
+  if (!res.ok) {
+    let msg = data && (data.detail || data.error || data.message);
+    if (Array.isArray(msg)) msg = msg.map(d => (d && d.msg) || JSON.stringify(d)).join('; ');
+    else if (msg && typeof msg === 'object') msg = JSON.stringify(msg);
+    throw new Error(`${res.status} ${msg || res.statusText || 'request failed'}`);
+  }
+  return data;
+}
+
+let es = null;
+let lastMsgAt = 0;
+let reconnectTimer = null;
+let backoff = 1000;
+let stateFailures = 0;
+
+function setStreamState(st) {
+  S.stream = st;
+  renderPills();
+}
+
+function dispatch(name, d) {
+  if (d == null) return;
+  switch (name) {
+    case 'imu': onImu(d); break;
+    case 'worker': onWorker(d); break;
+    case 'fleet': onFleet(d); break;
+    case 'alert': onAlert(d, true); break;
+    case 'site': onSite(d); break;
+    case 'config': onConfig(d); break;
+    case 'voice': onVoice(d); break;
+    case 'notify': onNotify(d); break;
+  }
+}
+
+function connectStream() {
+  if (MOCK) { Mock.openStream(dispatch, setStreamState); return; }
+  clearTimeout(reconnectTimer);
+  if (es) { es.close(); es = null; }
+  let src;
+  try { src = new EventSource(API + '/stream'); } catch (e) { scheduleReconnect(); return; }
+  es = src;
+  src.onopen = () => {
+    if (es !== src) return;
+    backoff = 1000;
+    lastMsgAt = performance.now();
+    const resync = !S.synced || S.stream !== 'live';
+    setStreamState('live');
+    if (resync) loadState();   // anything missed while disconnected
+  };
+  src.onerror = () => {
+    if (es !== src) return;
+    setStreamState('reconnecting');
+    if (src.readyState === 2) { src.close(); es = null; scheduleReconnect(); }
+  };
+  src.onmessage = () => { lastMsgAt = performance.now(); };
+  for (const name of STREAM_EVENTS) {
+    src.addEventListener(name, ev => {
+      lastMsgAt = performance.now();
+      let d;
+      try { d = JSON.parse(ev.data); } catch (e) { return; }
+      try { dispatch(name, d); } catch (err) { console.error('stream handler failed:', name, err); }
+    });
+  }
+}
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connectStream, backoff);
+  backoff = Math.min(backoff * 1.7, 10000);
+}
+
+async function loadState() {
+  try {
+    const st = await api('GET', '/state');
+    applyState(st || {});
+    if (stateFailures > 0) toast('Connected to the HeatGuard server', 'ok');
+    stateFailures = 0;
+    S.synced = true;
+    return true;
+  } catch (e) {
+    if (stateFailures === 0) toast(`Could not load site state: ${e.message}. Retrying…`, 'error', 6000);
+    stateFailures++;
+    return false;
+  }
+}
+async function retryStateUntilSynced() {
+  while (!S.synced) {
+    await new Promise(r => setTimeout(r, 4000));
+    if (!S.synced) await loadState();
+  }
+}
+
+function applyState(st) {
+  if (st.config) onConfig(st.config);
+  if (st.site) onSite(st.site);
+  if (Array.isArray(st.live)) {
+    const ids = new Set(st.live.map(w => w && w.id));
+    for (const id of Array.from(liveCards.keys())) if (!ids.has(id)) removeLiveCard(id);
+    for (const id of Array.from(S.live.keys())) if (!ids.has(id)) S.live.delete(id);
+    for (const w of st.live) onWorker(w);
+  }
+  renderLiveEmpty();
+  if (st.fleet) onFleet(st.fleet);
+  if (Array.isArray(st.notifications)) for (const n of st.notifications) onNotify(n, true);
+  if (Array.isArray(st.alerts)) for (const a of st.alerts) onAlert(a, false);
+  if (Array.isArray(st.voice)) for (const v of st.voice) onVoice(v);
+}
+
+/* =====================================================================
+   Toasts, prompt dialog, sound
+   ===================================================================== */
+function toast(msg, kind = 'info', ms = 4200) {
+  const box = $('#toasts');
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`;
+  el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  el.textContent = msg;
+  box.appendChild(el);
+  while (box.children.length > 4) box.firstElementChild.remove();
+  requestAnimationFrame(() => el.classList.add('in'));
+  setTimeout(() => { el.classList.remove('in'); setTimeout(() => el.remove(), 250); }, ms);
+}
+
+let askResolve = null;
+function ask(o) {
+  return new Promise(resolve => {
+    if (askResolve) askResolve(null);
+    askResolve = resolve;
+    $('#ask-title').textContent = o.title;
+    $('#ask-label').textContent = o.label;
+    $('#ask-ok').textContent = o.ok || 'Send';
+    const inp = $('#ask-input');
+    inp.type = o.type || 'text';
+    inp.value = o.value != null ? o.value : '';
+    inp.placeholder = o.placeholder || '';
+    if (o.min != null) inp.min = o.min; else inp.removeAttribute('min');
+    if (o.max != null) inp.max = o.max; else inp.removeAttribute('max');
+    if (o.maxlength) inp.maxLength = o.maxlength; else inp.removeAttribute('maxlength');
+    const pr = $('#ask-presets');
+    pr.innerHTML = (o.presets || []).map(p => `<button type="button" class="btn sm" data-v="${esc(p)}">${esc(p)} min</button>`).join('');
+    $('#ask-modal').hidden = false;
+    setTimeout(() => { inp.focus(); inp.select(); }, 30);
+  });
+}
+function closeAsk(value) {
+  $('#ask-modal').hidden = true;
+  const r = askResolve;
+  askResolve = null;
+  if (r) r(value);
+}
+
+const audio = { ctx: null, armed: false, muted: storeGet('hg.muted') === '1', last: 0 };
+function armAudio() {
+  audio.armed = true;
+  try {
+    if (!audio.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audio.ctx = new AC();
+    }
+    if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+  } catch (e) { /* audio unavailable */ }
+  renderMute();
+}
+function renderMute() {
+  const b = $('#btn-mute');
+  b.innerHTML = audio.muted ? ICON_MUTED : ICON_SOUND;
+  b.classList.toggle('muted', audio.muted);
+  b.title = audio.muted ? 'Alert sound off. Click to turn on.'
+    : audio.armed ? 'Alert sound on. Click to mute.'
+    : 'Alert sound turns on after your first click on the page.';
+  b.setAttribute('aria-pressed', String(audio.muted));
+}
+function beep() {
+  if (audio.muted || !audio.armed || !audio.ctx) return;
+  const now = performance.now();
+  if (now - audio.last < 2500) return;
+  audio.last = now;
+  const ac = audio.ctx, t = ac.currentTime;
+  [[880, 0], [660, 0.18]].forEach(([f, d]) => {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine';
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + d);
+    g.gain.exponentialRampToValueAtTime(0.22, t + d + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.15);
+    o.connect(g).connect(ac.destination);
+    o.start(t + d);
+    o.stop(t + d + 0.17);
+  });
+}
+function alarmBorder() {
+  const el = $('#alarm-border');
+  el.classList.remove('on');
+  void el.offsetWidth;
+  el.classList.add('on');
+}
+
+/* =====================================================================
+   Top bar
+   ===================================================================== */
+function setPill(id, tone, value, title) {
+  const el = document.getElementById(id);
+  el.className = `pill tone-${tone}`;
+  el.querySelector('.pill-v').textContent = value;
+  el.title = title || '';
+}
+function renderPills() {
+  const c = S.config || {};
+  const streamMap = {
+    live: ['ok', MOCK ? 'Live (mock)' : 'Live', 'Receiving live updates'],
+    connecting: ['muted', 'Connecting', 'Opening the event stream'],
+    reconnecting: ['warn', 'Reconnecting', 'Stream interrupted. Retrying automatically.'],
+  };
+  const s = streamMap[S.stream] || streamMap.connecting;
+  setPill('pill-stream', s[0], s[1], s[2]);
+
+  const wear = c.wearables || [];
+  const online = wear.filter((x) => x.online);
+  if (online.length) {
+    const w0 = online[0];
+    const via = w0.transport === 'wifi' ? `WiFi${w0.ip ? ' · ' + w0.ip : ''}` : (w0.transport === 'serial' ? 'USB' : (w0.transport === 'ws' ? 'Cloud · WebSocket' : (w0.transport || '')));
+    setPill('pill-wearable', 'ok', `${online.length > 1 ? online.length + ' online' : 'Online'} · ${via}`, `Wearable ${w0.id} reporting over ${w0.transport}${w0.fw ? ' (' + w0.fw + ')' : ''}`);
+  } else if (wear.length) {
+    setPill('pill-wearable', 'warn', 'Offline', 'The wearable stopped reporting. Battery, WiFi coverage, or it was taken off.');
+  } else if (c.serial_connected) {
+    const port = String(c.serial_port || '').replace(/^\/dev\//, '');
+    setPill('pill-wearable', 'muted', port ? `USB · ${port}` : 'USB', 'USB serial open, waiting for readings');
+  } else {
+    setPill('pill-wearable', 'muted', 'Waiting', 'No wearable yet. Waiting for one on WiFi (UDP 47800) or USB.');
+  }
+
+  if (c.devin_configured) setPill('pill-devin', 'devin', 'Configured', `Incident analysis by Devin${c.devin_mode ? ' (' + c.devin_mode + ')' : ''}`);
+  else setPill('pill-devin', 'muted', 'Local analysis', 'Devin is not configured. Incidents are analysed locally.');
+
+  const as = c.assistant;
+  if (as && as.enabled) setPill('pill-voice', 'ok', as.model || 'On', `OpenAI voice · ${as.model || ''}`);
+  else if (as) setPill('pill-voice', 'muted', 'Offline', as.reason ? `Voice assistant offline: ${as.reason}` : 'Voice assistant offline');
+  else setPill('pill-voice', 'muted', '—', 'Voice assistant status unknown');
+
+  const wa = c.whatsapp;
+  if (wa && wa.enabled && !wa.dry_run) setPill('pill-whatsapp', 'ok', providerName(wa.provider), `WhatsApp escalation via ${providerName(wa.provider)} to ${plural((wa.recipients || []).length, 'recipient')}`);
+  else if (wa) setPill('pill-whatsapp', 'warn', 'Dry run', 'Messages are composed and logged but not sent');
+  else setPill('pill-whatsapp', 'muted', '—', 'WhatsApp status unknown');
+
+  const src = S.site && S.site.source;
+  if (src === 'open-meteo') setPill('pill-weather', 'ok', 'Open-Meteo', 'Live weather from Open-Meteo');
+  else if (src === 'override') setPill('pill-weather', 'warn', 'Override', 'Simulated heat from the demo controls');
+  else if (src === 'fallback') setPill('pill-weather', 'muted', 'Fallback', 'Weather service unreachable. Using fallback values.');
+  else setPill('pill-weather', 'muted', src || '—', '');
+
+  const tw = Number(c.timewarp) || 1;
+  const warp = $('#pill-warp');
+  warp.hidden = tw <= 1;
+  warp.textContent = `Time warp ×${tw}`;
+  warp.title = `Heat-budget clocks run ${tw}× faster than real time`;
+}
+function providerName(p) {
+  return ({ twilio: 'Twilio', meta: 'Meta Cloud API', callmebot: 'CallMeBot', dryrun: 'Dry run' })[p] || (p || '—');
+}
+
+/* =====================================================================
+   Site conditions + demo controls
+   ===================================================================== */
+let lastPolicyKey = '';
+
+function onSite(s) {
+  if (!s || typeof s !== 'object') return;
+  S.site = s;
+  $('#tb-site').textContent = s.name || 'Site';
+  $('#site-coords').textContent = isNum(s.lat) && isNum(s.lon) ? `${s.lat.toFixed(3)}° N, ${s.lon.toFixed(3)}° E` : '';
+
+  const color = safeColor(s.category && s.category.color);
+  const wb = $('#wbgt');
+  if (color) wb.style.setProperty('--tone', color); else wb.style.removeProperty('--tone');
+  $('#wbgt-val').textContent = fx(s.wbgt_c, 1);
+  const cat = $('#wbgt-cat');
+  cat.querySelector('span').textContent = (s.category && s.category.label) || '—';
+  cat.title = s.category && isNum(s.category.level) ? `Heat category level ${s.category.level}` : '';
+
+  const srcLabel = { 'open-meteo': 'Source: Open-Meteo live weather', override: 'Source: manual override (demo)', fallback: 'Source: fallback values' };
+  $('#wbgt-src').textContent = srcLabel[s.source] || `Source: ${s.source || '—'}`;
+  const upd = $('#site-updated');
+  upd.dataset.ts = isNum(s.updated) ? s.updated : '';
+  upd.textContent = relTime(s.updated);
+
+  $('#m-temp').textContent = fx(s.temp_c, 1);
+  $('#m-rh').textContent = fi(s.rh);
+  $('#m-app').textContent = fx(s.apparent_c, 1);
+  $('#m-wind').textContent = fx(s.wind_ms, 1);
+  $('#m-solar').textContent = fi(s.solar_wm2);
+
+  renderPolicy();
+  renderMidday();
+
+  const ov = $('#override-state');
+  if (s.source === 'override') {
+    ov.textContent = `Override: ${fx(s.temp_c, 1)} °C, ${fi(s.rh)}% RH`;
+    ov.classList.add('on');
+  } else {
+    ov.textContent = 'Live weather';
+    ov.classList.remove('on');
+  }
+  renderPills();
+}
+
+function renderPolicy() {
+  const p = S.site && S.site.policy;
+  const lw = S.live.values().next().value;
+  const hk = lw && lw.workload ? `${lw.acclimatized === false ? 'unacclimatized' : 'acclimatized'}|${lw.workload}` : '';
+  const key = JSON.stringify(p || null) + hk;
+  if (key === lastPolicyKey) return;
+  lastPolicyKey = key;
+  const tb = $('#policy-body');
+  if (!p) { tb.innerHTML = '<tr><td colspan="4" class="dim">Waiting for site data…</td></tr>'; return; }
+  const rows = [['acclimatized', 'Acclimatized'], ['unacclimatized', 'Unacclimatized']];
+  tb.innerHTML = rows.map(([k, label]) => `<tr><th scope="row">${label}</th>${
+    ['light', 'moderate', 'heavy'].map(wl => policyCell(p[k] && p[k][wl], hk === `${k}|${wl}` ? lw : null)).join('')
+  }</tr>`).join('');
+}
+function policyCell(c, liveWorker) {
+  const hl = liveWorker ? ' hl' : '';
+  const tag = liveWorker ? `<span class="pc-live" title="Current limit for ${esc(liveWorker.name || liveWorker.id)}">LIVE</span>` : '';
+  if (!c || !isNum(c.work)) return `<td class="pc${hl}">${tag}—</td>`;
+  if (c.work === 0) return `<td class="pc stop${hl}">${tag}STOP WORK</td>`;
+  return `<td class="pc${hl}">${tag}<b>${c.work}</b> work<span class="sep">/</span><b>${isNum(c.rest) ? c.rest : '—'}</b> rest</td>`;
+}
+function renderMidday() {
+  const el = $('#midday');
+  const mb = S.site && S.site.midday_break;
+  if (!mb) { el.innerHTML = ''; return; }
+  let chip;
+  if (mb.active) chip = '<span class="chip t-alert">In effect now · no outdoor work</span>';
+  else if (mb.in_season) chip = '<span class="chip t-caution">In season · not in effect right now</span>';
+  else chip = '<span class="chip t-muted">Out of season</span>';
+  el.innerHTML = `<span class="mid-k">UAE midday break</span>
+    <span class="mono">${esc(mb.window || '—')}</span>
+    <span class="dim">Season ${esc(mb.season || '—')}</span>${chip}
+    ${S.site.local_time ? `<span class="dim">Site time <span class="mono">${esc(S.site.local_time)}</span></span>` : ''}`;
+}
+
+function onConfig(c) {
+  if (!c || typeof c !== 'object') return;
+  S.config = Object.assign({}, S.config, c);
+  const tw = Number(S.config.timewarp) || 1;
+  $$('#warp-seg button').forEach(b => b.classList.toggle('on', Number(b.dataset.w) === tw));
+  $('#sim-switch').setAttribute('aria-checked', String(!!S.config.sim_events));
+  renderPills();
+  renderLiveEmpty();
+  renderVoiceStatus();
+  renderWaHeader();
+}
+
+function initDemoControls() {
+  $('#override-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const temp = parseFloat($('#ov-temp').value);
+    const rh = parseFloat($('#ov-rh').value);
+    const sun = $('#ov-sun').checked;
+    if (!(temp >= -10 && temp <= 60)) { toast('Temperature must be between -10 and 60 °C', 'error'); return; }
+    if (!(rh >= 0 && rh <= 100)) { toast('Humidity must be between 0 and 100 %', 'error'); return; }
+    const btn = $('#ov-apply');
+    btn.classList.add('busy');
+    try {
+      const res = await api('POST', '/site/override', { temp_c: temp, rh, sun });
+      const site = res && (res.site || (res.wbgt_c != null ? res : null));
+      if (site) onSite(site);
+      toast(`Simulating ${temp} °C at ${rh}% RH${sun ? ' in full sun' : ' in shade'}`, 'ok');
+    } catch (err) {
+      toast(`Could not apply heat override: ${err.message}`, 'error');
+    } finally { btn.classList.remove('busy'); }
+  });
+  $('#ov-clear').addEventListener('click', async e => {
+    const btn = e.currentTarget;
+    btn.classList.add('busy');
+    try {
+      const res = await api('DELETE', '/site/override');
+      const site = res && (res.site || (res.wbgt_c != null ? res : null));
+      if (site) onSite(site);
+      toast('Back to live weather', 'ok');
+    } catch (err) {
+      toast(`Could not clear override: ${err.message}`, 'error');
+    } finally { btn.classList.remove('busy'); }
+  });
+  $('#warp-seg').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-w]');
+    if (!b) return;
+    const n = Number(b.dataset.w);
+    const prev = Number(S.config.timewarp) || 1;
+    if (n === prev) return;
+    onConfig({ timewarp: n });
+    try {
+      const res = await api('POST', '/demo', { timewarp: n });
+      const cfg = res && (res.config || ('timewarp' in res ? res : null));
+      if (cfg) onConfig(cfg);
+      toast(n === 1 ? 'Time warp off: real time' : `Time warp ×${n}: heat clocks run ${n}× faster`, 'ok');
+    } catch (err) {
+      onConfig({ timewarp: prev });
+      toast(`Could not change time warp: ${err.message}`, 'error');
+    }
+  });
+  $('#sim-switch').addEventListener('click', async () => {
+    const prev = !!S.config.sim_events;
+    onConfig({ sim_events: !prev });
+    try {
+      const res = await api('POST', '/demo', { sim_events: !prev });
+      const cfg = res && (res.config || ('sim_events' in res ? res : null));
+      if (cfg) onConfig(cfg);
+      toast(!prev ? 'Simulated incidents on' : 'Simulated incidents off', 'ok');
+    } catch (err) {
+      onConfig({ sim_events: prev });
+      toast(`Could not toggle simulated incidents: ${err.message}`, 'error');
+    }
+  });
+}
+
+/* =====================================================================
+   IMU ring buffer + canvas charts
+   ===================================================================== */
+class Ring {
+  constructor(cap) {
+    this.cap = cap;
+    this.start = 0;
+    this.n = 0;
+    this.t = new Float64Array(cap);
+    this.col = { am: new Float32Array(cap), gx: new Float32Array(cap), gy: new Float32Array(cap), gz: new Float32Array(cap), gm: new Float32Array(cap) };
+    this.lastRecv = 0;
+    this.offset = null; // performance.now() - device ms, smoothed
+  }
+  clear() { this.start = 0; this.n = 0; this.offset = null; }
+  get lastT() { return this.n ? this.t[(this.start + this.n - 1) % this.cap] : 0; }
+  get firstT() { return this.n ? this.t[this.start] : 0; }
+  push(t, ax, ay, az, gx, gy, gz) {
+    if (!Number.isFinite(t)) return;
+    if (this.n) {
+      const lt = this.lastT;
+      if (t <= lt) {
+        if (lt - t > 2000) this.clear();   // device rebooted: clock went backwards
+        else return;                       // duplicate / out of order
+      }
+    }
+    const i = (this.start + this.n) % this.cap;
+    this.t[i] = t;
+    this.col.am[i] = Math.sqrt(ax * ax + ay * ay + az * az);
+    this.col.gx[i] = gx; this.col.gy[i] = gy; this.col.gz[i] = gz;
+    this.col.gm[i] = Math.sqrt(gx * gx + gy * gy + gz * gz);
+    if (this.n < this.cap) this.n++; else this.start = (this.start + 1) % this.cap;
+  }
+  sync(now) {
+    this.lastRecv = now;
+    if (!this.n) return;
+    const off = now - this.lastT;
+    if (this.offset == null || Math.abs(off - this.offset) > 1500) this.offset = off;
+    else this.offset += (off - this.offset) * 0.08;
+  }
+  recentMean(key, count) {
+    let s = 0, k = 0;
+    for (let j = this.n - 1; j >= 0 && k < count; j--, k++) s += this.col[key][(this.start + j) % this.cap];
+    return k ? s / k : NaN;
+  }
+}
+
+const canvasRO = new ResizeObserver(entries => {
+  for (const e of entries) {
+    const cv = e.target.__cv;
+    if (cv) { cv.needsFit = true; if (cv.onResize) cv.onResize(); }
+  }
+});
+function makeCanvas(el, onResize) {
+  const cv = { el, ctx: el.getContext('2d'), w: 0, h: 0, dpr: 0, needsFit: true, onResize };
+  el.__cv = cv;
+  canvasRO.observe(el);
+  return cv;
+}
+function fitCanvas(cv) {
+  const w = cv.el.clientWidth, h = cv.el.clientHeight, dpr = window.devicePixelRatio || 1;
+  cv.needsFit = false;
+  if (w === cv.w && h === cv.h && dpr === cv.dpr) return false;
+  cv.w = w; cv.h = h; cv.dpr = dpr;
+  cv.el.width = Math.max(1, Math.round(w * dpr));
+  cv.el.height = Math.max(1, Math.round(h * dpr));
+  cv.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return true;
+}
+
+function accelTicks(max) {
+  const step = max <= 4.2 ? 1 : max <= 8.5 ? 2 : 4;
+  const out = [];
+  for (let v = 0; v <= max + 1e-6; v += step) out.push(v);
+  return out;
+}
+function gyroTicks(max) {
+  const steps = [25, 50, 100, 200, 250, 500, 1000, 2000];
+  const st = steps.find(s => max / s <= 2.2) || 2000;
+  const out = [];
+  for (let v = -Math.floor(max / st) * st; v <= max + 1e-6; v += st) out.push(v);
+  return out;
+}
+function accelRefs() {
+  return [
+    { y: 1, color: C['text-3'], dash: [4, 4], alpha: 0.9, label: '1 g' },
+    { y: 0.5, color: C.alert, dash: [2, 3], alpha: 0.45, label: 'free-fall', nudge: 5 },
+    { y: 1.8, color: C.alert, dash: [2, 3], alpha: 0.45, label: 'impact', nudge: -4 },
+  ];
+}
+function gyroSeries() {
+  return [
+    { key: 'gx', color: C['chart-x'], width: 1.3 },
+    { key: 'gy', color: C['chart-y'], width: 1.3 },
+    { key: 'gz', color: C['chart-z'], width: 1.3 },
+  ];
+}
+
+function drawChart(cv, src, o) {
+  const ctx = cv.ctx, w = cv.w, h = cv.h;
+  ctx.clearRect(0, 0, w, h);
+  if (w < 40 || h < 30) return;
+  const L = 36, R = o.padR != null ? o.padR : 8, T = 8, B = 18;
+  const pw = w - L - R, ph = h - T - B;
+  const span = (o.t1 - o.t0) || 1;
+  const X = t => L + ((t - o.t0) / span) * pw;
+  const Y = v => T + (1 - (v - o.yMin) / ((o.yMax - o.yMin) || 1)) * ph;
+  ctx.font = `10px ${MONO}`;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (const v of o.yTicks) {
+    const y = Math.round(Y(v)) + 0.5;
+    ctx.strokeStyle = v === 0 && o.zeroLine ? C['grid-2'] : C.grid;
+    ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke();
+    ctx.fillStyle = C['text-3'];
+    ctx.fillText(String(v), L - 6, y);
+  }
+  ctx.strokeStyle = C.grid;
+  for (const t of o.xGrid || []) {
+    if (t < o.t0 || t > o.t1) continue;
+    const x = Math.round(X(t)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + ph); ctx.stroke();
+  }
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = C['text-3'];
+  for (const lb of o.xLabels || []) {
+    if (lb.t < o.t0 - 1 || lb.t > o.t1 + 1) continue;
+    ctx.textAlign = lb.align || (X(lb.t) - L < 16 ? 'left' : L + pw - X(lb.t) < 16 ? 'right' : 'center');
+    ctx.fillText(lb.text, clamp(X(lb.t), L, L + pw), h - 4);
+  }
+  for (const r of o.refs || []) {
+    if (r.y < o.yMin || r.y > o.yMax) continue;
+    const y = Math.round(Y(r.y)) + 0.5;
+    ctx.save();
+    ctx.globalAlpha = r.alpha != null ? r.alpha : 1;
+    ctx.strokeStyle = r.color;
+    ctx.setLineDash(r.dash || []);
+    ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke();
+    if (r.label) {
+      // labels live in the right gutter so they never collide with each other or the trace
+      ctx.globalAlpha = Math.min(1, (r.alpha != null ? r.alpha : 1) + 0.45);
+      ctx.fillStyle = r.color;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(r.label, L + pw + 6, clamp(y + (r.nudge || 0), T + 4, T + ph - 2));
+    }
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(L, T - 1, pw, ph + 2); ctx.clip();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const s of o.series) {
+    const arr = src.col[s.key];
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.width || 1.4;
+    ctx.beginPath();
+    let pen = false, prev = 0;
+    for (let k = 0; k < src.n; k++) {
+      const i = (src.start + k) % src.cap;
+      const t = src.t[i];
+      if (t < o.t0 - 200) continue;
+      if (t > o.t1 + 200) break;
+      const x = X(t), y = Y(arr[i]);
+      if (!pen || t - prev > 400) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
+      prev = t;
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  if (o.marker != null && o.marker >= o.t0 && o.marker <= o.t1) {
+    const x = Math.round(X(o.marker)) + 0.5;
+    ctx.save();
+    ctx.strokeStyle = C.alert;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + ph); ctx.stroke();
+    ctx.fillStyle = C.alert;
+    ctx.font = `600 10px ${MONO}`;
+    ctx.textAlign = x > L + pw - 50 ? 'right' : 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('event', x + (ctx.textAlign === 'left' ? 4 : -4), T + 2);
+    ctx.restore();
+  }
+  if (o.overlay) {
+    ctx.save();
+    ctx.font = `600 11px ${MONO}`;
+    ctx.fillStyle = C.caution;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(o.overlay, L + pw - 4, T + 4);
+    ctx.restore();
+  }
+}
+function drawEmptyChart(cv, text) {
+  const ctx = cv.ctx;
+  ctx.clearRect(0, 0, cv.w, cv.h);
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth = 1;
+  for (let k = 1; k < 4; k++) {
+    const y = Math.round((cv.h / 4) * k) + 0.5;
+    ctx.beginPath(); ctx.moveTo(36, y); ctx.lineTo(cv.w - 8, y); ctx.stroke();
+  }
+  if (text) {
+    ctx.fillStyle = C['text-3'];
+    ctx.font = `12px ${MONO}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cv.w / 2, cv.h / 2);
+  }
+}
+
+/* =====================================================================
+   Worker rendering shared by the live card and the fleet drawer
+   ===================================================================== */
+function statusBadge(status, big) {
+  const st = STATUS[status] || { label: status || 'Unknown', tone: 'offline' };
+  return `<span class="status-badge${big ? ' big' : ''} t-${st.tone}"><i></i>${esc(st.label)}</span>`;
+}
+
+function phaseHTML(w) {
+  const ph = PHASE[w.phase] || { label: String(w.phase || '—').toUpperCase(), tone: 'offline' };
+  let h = `<div><div class="label">Phase</div><div class="phase-name t-${ph.tone}">${esc(ph.label)}</div></div>`;
+  if (w.phase_reason) h += `<div class="phase-reason">${esc(w.phase_reason)}</div>`;
+  const remMin = isNum(w.rest_remaining_min) ? w.rest_remaining_min : 0;
+  const recv = w.__recv || performance.now();
+  if (w.phase === 'rest' || (w.phase === 'stop' && remMin > 0)) {
+    const req = isNum(w.rest_required_min) && w.rest_required_min > 0 ? w.rest_required_min : null;
+    const pct = req ? clamp(1 - remMin / req, 0, 1) : 0;
+    h += `<div class="cool">
+      <div class="label">Cool-down remaining</div>
+      <div class="countdown" data-rest-s="${remMin * 60}" data-recv="${recv}">${mmss(remMin * 60)}</div>
+      <div class="bar t-rest"><div style="width:${(pct * 100).toFixed(1)}%"></div></div>
+      <div class="bar-caption">${req ? `${fx(Math.max(0, req - remMin), 0)} of ${fx(req, 0)} min done · rest in shade, drink water` : 'Rest in shade, drink water'}</div>
+    </div>`;
+  } else if (w.phase === 'stop' || w.work_budget_min === 0) {
+    h += `<div class="stop-note">No ${esc(WORKLOAD[w.workload] ? WORKLOAD[w.workload].toLowerCase() + ' ' : '')}work permitted at the current WBGT. Keep the worker in shade until conditions ease.</div>`;
+  } else {
+    const el = isNum(w.work_elapsed_min) ? w.work_elapsed_min : 0;
+    const bud = isNum(w.work_budget_min) ? w.work_budget_min : 0;
+    const pct = bud > 0 ? el / bud : 0;
+    const tone = pct >= 1 ? 'alert' : pct >= 0.8 ? 'caution' : 'ok';
+    h += `<div class="budget">
+      <div class="budget-top"><span class="label">Heat budget</span><span class="budget-num"><b>${fx(el, 1)}</b> / ${bud ? fx(bud, 0) : '—'} min</span></div>
+      <div class="bar t-${tone}"><div style="width:${(clamp(pct, 0, 1) * 100).toFixed(1)}%"></div><span class="tick80"></span></div>
+      <div class="bar-caption">${pct >= 1 ? 'Limit reached: cool-down due now' : bud ? `${fx(Math.max(0, bud - el), 1)} min of work left before cool-down` : ''}</div>
+    </div>`;
+  }
+  return h;
+}
+
+function gaugeHTML(risk) {
+  const r = isNum(risk) ? clamp(risk, 0, 100) : 0;
+  const tone = r >= 70 ? 'alert' : r >= 40 ? 'caution' : 'ok';
+  const arc = 'M8 40 A32 32 0 0 1 76 40';
+  return `<div class="gauge t-${tone}" role="img" aria-label="Risk ${isNum(risk) ? Math.round(risk) : 'unknown'} of 100">
+    <svg viewBox="0 0 84 46" aria-hidden="true"><path class="g-track" d="${arc}" pathLength="100"/>
+    <path class="g-val" d="${arc}" pathLength="100" stroke-dasharray="${r.toFixed(1)} 100"${r <= 0 ? ' opacity="0"' : ''}/></svg>
+    <span class="gauge-num">${isNum(risk) ? Math.round(risk) : '—'}</span></div>`;
+}
+function batteryHTML(b) {
+  if (!isNum(b)) return '—';
+  const v = clamp(b, 0, 100);
+  const tone = v < 20 ? 'alert' : v < 40 ? 'caution' : 'ok';
+  return `<span class="batt t-${tone}"><i style="width:${Math.round(v * 0.21)}px"></i></span>${Math.round(v)}<small>%</small>`;
+}
+function statsHTML(w) {
+  const oa = isNum(w.open_alerts) ? w.open_alerts : 0;
+  const acc = w.acclimatized === true ? 'Acclimatized' : w.acclimatized === false ? 'Not acclimatized' : '';
+  const tiles = [
+    ['Shift exposure', `${fi(w.shift_exposure_min)}<small>min</small>`, isNum(w.shift_exposure_min) ? `${(w.shift_exposure_min / 60).toFixed(1)} h in heat this shift` : ''],
+    ['Workload', `<span class="chip wl wl-${esc(w.workload)}">${esc(WORKLOAD[w.workload] || w.workload || '—')}</span>`, acc],
+    isNum(w.wrist_temp_c)
+      ? ['Wrist air temp', `<span class="v t-${w.temp_level === 'call' ? 'alert' : w.temp_level === 'stop' ? 'caution' : 'ok'}" style="color:var(--tone)">${fx(w.wrist_temp_c, 1)}<small>°C</small></span>`,
+         `chip ${fx(w.device_temp_c, 0)} °C · stop ≥${fx(((S.config || {}).heat || {}).air_stop ?? 35, 0)} · call ≥${fx(((S.config || {}).heat || {}).air_call ?? 45, 0)} · ${w.temp_level === 'call' ? 'CALLING' : w.temp_level === 'stop' ? 'STOP WORK' : 'OK'}`]
+      : ['Device (chip) temp', `${fx(w.device_temp_c, 1)}<small>°C</small>`, 'Wearable sensor, not skin'],
+    ['Battery', batteryHTML(w.battery), ''],
+    ['Risk', gaugeHTML(w.risk), ''],
+    ['Last event', `<span class="v txt">${esc(EVENT_LABEL[w.last_event] || w.last_event || 'None')}</span>`, oa ? plural(oa, 'open alert') : 'No open alerts'],
+  ];
+  return tiles.map(([k, v, s]) => `<div class="stat"><div class="label">${k}</div>${
+    v.startsWith('<span class="v') || v.startsWith('<div class="gauge') ? v : `<div class="v">${v}</div>`
+  }${s ? `<div class="s">${esc(s)}</div>` : ''}</div>`).join('');
+}
+
+/* =====================================================================
+   Live wearable cards
+   ===================================================================== */
+function onImu(d) {
+  if (!d.id || !Array.isArray(d.samples) || !d.samples.length) return;
+  let ring = rings.get(d.id);
+  if (!ring) { ring = new Ring(2048); rings.set(d.id, ring); }
+  for (const s of d.samples) {
+    if (!Array.isArray(s) || s.length < 7) continue;
+    ring.push(+s[0], +s[1], +s[2], +s[3], +s[4], +s[5], +s[6]);
+  }
+  ring.sync(performance.now());
+}
+
+function onWorker(w) {
+  if (!w || !w.id) return;
+  w.__recv = performance.now();
+  if (DR.id === w.id) renderDrawer(w);
+  if (w.live === false) return;
+  S.live.set(w.id, w);
+  const card = liveCards.get(w.id) || createLiveCard(w);
+  updateLiveCard(card, w);
+  renderLiveEmpty();
+  renderPolicy();
+}
+
+function createLiveCard(w) {
+  const root = document.createElement('article');
+  root.className = 'card live-card';
+  root.dataset.id = w.id;
+  root.innerHTML = `
+    <header class="lc-head">
+      <div class="avatar" data-ref="avatar"></div>
+      <div class="lc-ident">
+        <div class="kicker"><span class="live-dot"></span>Live wearable · M5Stack StickS3</div>
+        <div class="lc-name" data-ref="name"></div>
+        <div class="lc-meta" data-ref="meta"></div>
+      </div>
+      <div class="lc-head-right">
+        <div data-ref="status"></div>
+        <div class="lc-updated">Updated <span class="rel" data-ref="updated">—</span></div>
+      </div>
+    </header>
+    <div class="lc-body">
+      <section class="lc-phase" data-ref="phase"></section>
+      <section class="stats" data-ref="stats"></section>
+    </div>
+    <section class="motion">
+      <div class="motion-head"><span class="section-title">Motion · last 10 s</span><span class="motion-src">BMI270 IMU · ~50 samples/s</span></div>
+      <div class="motion-body">
+        <div class="charts">
+          <div class="chart"><div class="chart-cap"><span>|a| acceleration magnitude</span><span class="dim">g · thresholds: free-fall 0.5 g, impact 1.8 g</span></div><canvas data-ref="cA"></canvas></div>
+          <div class="chart"><div class="chart-cap"><span>Gyro</span><span class="legend"><i class="lx"></i>x<i class="ly"></i>y<i class="lz"></i>z</span><span class="dim">deg/s</span></div><canvas data-ref="cG"></canvas></div>
+        </div>
+        <dl class="readouts">
+          <div><dt>|a|</dt><dd><span data-ref="rA">—</span><small>g</small></dd></div>
+          <div><dt>|ω|</dt><dd><span data-ref="rG">—</span><small>deg/s</small></dd></div>
+          <div><dt>Activity</dt><dd><span data-ref="rAct">—</span></dd></div>
+          <div><dt>Tremor</dt><dd><span data-ref="rTrem">—</span></dd></div>
+          <div><dt>Still</dt><dd><span data-ref="rStill">—</span><small>s</small></dd></div>
+        </dl>
+      </div>
+    </section>
+    <footer class="lc-actions">
+      <button class="btn cool" type="button" data-cmd="rest">Send cool-down</button>
+      <button class="btn" type="button" data-cmd="resume">Resume work</button>
+      <button class="btn" type="button" data-cmd="buzz">Buzz</button>
+      <button class="btn" type="button" data-cmd="msg">Message</button>
+    </footer>`;
+  const refs = {};
+  root.querySelectorAll('[data-ref]').forEach(el => { refs[el.dataset.ref] = el; });
+  const card = { id: w.id, root, refs, worker: w, aMax: 3, gMax: 150, emptyDrawn: false, staleAt: 0 };
+  card.cA = makeCanvas(refs.cA, () => { card.emptyDrawn = false; });
+  card.cG = makeCanvas(refs.cG, () => { card.emptyDrawn = false; });
+  root.querySelector('.lc-actions').addEventListener('click', e => {
+    const b = e.target.closest('[data-cmd]');
+    if (b) workerCommand(b.dataset.cmd, card.id, card.worker.name, b);
+  });
+  $('#live-list').appendChild(root);
+  liveCards.set(w.id, card);
+  return card;
+}
+function removeLiveCard(id) {
+  const card = liveCards.get(id);
+  if (!card) return;
+  canvasRO.unobserve(card.cA.el);
+  canvasRO.unobserve(card.cG.el);
+  card.root.remove();
+  liveCards.delete(id);
+}
+function updateLiveCard(card, w) {
+  const r = card.refs;
+  card.worker = w;
+  r.avatar.textContent = initials(w.name || w.id);
+  r.name.textContent = w.name || w.id;
+  r.meta.innerHTML = [w.trade, w.zone, w.crew ? `Crew ${w.crew}` : null].filter(Boolean).map(esc).join(' · ')
+    + ` · <span class="mono">${esc(w.id)}</span>`;
+  r.status.innerHTML = statusBadge(w.status, true);
+  r.updated.dataset.ts = isNum(w.updated) ? w.updated : '';
+  r.updated.textContent = relTime(w.updated);
+  r.phase.innerHTML = phaseHTML(w);
+  r.stats.innerHTML = statsHTML(w);
+  card.root.classList.toggle('is-alert', w.status === 'alert');
+}
+function updateReadouts(card, now) {
+  const r = card.refs, m = card.worker.motion || {};
+  const ring = rings.get(card.id);
+  let am = m.am, gm = m.gm;
+  if (ring && ring.n && now - ring.lastRecv < 1500) { am = ring.recentMean('am', 10); gm = ring.recentMean('gm', 10); }
+  r.rA.textContent = fx(am, 2);
+  r.rG.textContent = fx(gm, 0);
+  r.rAct.textContent = fx(m.act, 2);
+  r.rTrem.textContent = isNum(m.trem_hz) && m.trem_hz > 0 ? `${fx(m.trem_hz, 1)} Hz · ${fx(m.trem_amp, 2)}` : 'None';
+  r.rStill.textContent = isNum(m.still_s) ? fi(m.still_s) : '—';
+}
+function drawLive(card, now) {
+  let fitted = false;
+  for (const cv of [card.cA, card.cG]) if (cv.needsFit) fitted = fitCanvas(cv) || fitted;
+  if (fitted) card.emptyDrawn = false;
+  const ring = rings.get(card.id);
+  if (!ring || !ring.n) {
+    if (!card.emptyDrawn) {
+      drawEmptyChart(card.cA, 'Waiting for motion data');
+      drawEmptyChart(card.cG, '');
+      card.emptyDrawn = true;
+    }
+    return;
+  }
+  card.emptyDrawn = false;
+  const age = now - ring.lastRecv;
+  const stale = age > 2000;
+  if (stale && !fitted && card.staleAt && now - card.staleAt < 500) return;
+  card.staleAt = stale ? now : 0;
+  const t1 = stale ? ring.lastT + 50 : now - ring.offset - RENDER_DELAY_MS;
+  const t0 = t1 - WINDOW_MS;
+  let aMax = 0, gMax = 0;
+  for (let k = ring.n - 1; k >= 0; k--) {
+    const i = (ring.start + k) % ring.cap, t = ring.t[i];
+    if (t < t0) break;
+    if (t > t1) continue;
+    if (ring.col.am[i] > aMax) aMax = ring.col.am[i];
+    const g = Math.max(Math.abs(ring.col.gx[i]), Math.abs(ring.col.gy[i]), Math.abs(ring.col.gz[i]));
+    if (g > gMax) gMax = g;
+  }
+  card.aMax += (Math.max(2.5, Math.ceil(aMax * 1.15 * 2) / 2) - card.aMax) * 0.12;
+  card.gMax += (Math.max(100, gMax * 1.15) - card.gMax) * 0.12;
+  const xGrid = [];
+  for (let k = 1; k < 10; k++) xGrid.push(t1 - k * 1000);
+  const xLabels = [8, 6, 4, 2].map(k => ({ t: t1 - k * 1000, text: `-${k} s` }));
+  xLabels.push({ t: t1, text: stale ? 'last' : 'now', align: 'right' });
+  const overlay = stale ? `no motion data · ${Math.round(age / 1000)} s` : null;
+  drawChart(card.cA, ring, { t0, t1, padR: 58, yMin: 0, yMax: card.aMax, yTicks: accelTicks(card.aMax), xGrid, xLabels,
+    refs: accelRefs(), series: [{ key: 'am', color: C['chart-a'], width: 1.6 }], overlay });
+  drawChart(card.cG, ring, { t0, t1, padR: 58, yMin: -card.gMax, yMax: card.gMax, yTicks: gyroTicks(card.gMax), zeroLine: true,
+    xGrid, xLabels, series: gyroSeries() });
+}
+
+function renderLiveEmpty() {
+  const empty = S.live.size === 0;
+  $('#live-empty').hidden = !empty;
+  if (!empty) return;
+  const c = S.config || {};
+  if (c.serial_connected) {
+    $('#live-empty-title').textContent = 'Waiting for wearable data';
+    $('#live-empty-sub').textContent = `Serial port ${c.serial_port || ''} is open but no readings have arrived yet. Check the StickS3 is powered on.`;
+  } else {
+    $('#live-empty-title').textContent = 'No wearable connected: switch on the StickS3';
+    $('#live-empty-sub').textContent = 'Waiting for a HeatGuard wearable on WiFi (it finds this server automatically) or USB. The simulated fleet and alerts keep running.';
+  }
+}
+
+/* Worker commands (live card + drawer) */
+async function workerCommand(cmd, id, name, btn) {
+  const who = name || id;
+  let body;
+  if (cmd === 'rest') {
+    const v = await ask({ title: `Send cool-down to ${who}`, label: 'Rest duration in minutes', type: 'number', value: '15',
+      min: 1, max: 240, presets: ['10', '15', '20', '30'], ok: 'Send cool-down' });
+    if (v == null) return;
+    const mins = Math.round(Number(v));
+    if (!(mins >= 1 && mins <= 240)) { toast('Enter a rest duration between 1 and 240 minutes', 'error'); return; }
+    body = { cmd: 'rest', mins };
+  } else if (cmd === 'msg') {
+    const v = await ask({ title: `Message ${who}`, label: 'Shown on the wrist display', type: 'text', value: '',
+      placeholder: 'Supervisor on the way', maxlength: 80, ok: 'Send message' });
+    if (v == null) return;
+    if (!v) { toast('Message is empty', 'error'); return; }
+    body = { cmd: 'msg', text: v };
+  } else {
+    body = { cmd };
+  }
+  const done = {
+    rest: `Cool-down sent to ${who} (${body.mins} min)`,
+    resume: `${who} cleared to resume work`,
+    buzz: `Buzzed ${who}'s wearable`,
+    msg: `Message sent to ${who}`,
+  }[cmd] || `Command sent to ${who}`;
+  if (btn) btn.classList.add('busy');
+  try {
+    await api('POST', `/workers/${encodeURIComponent(id)}/command`, body);
+    toast(done, 'ok');
+  } catch (e) {
+    toast(`Could not send "${cmd}" to ${who}: ${e.message}`, 'error');
+  } finally {
+    if (btn) btn.classList.remove('busy');
+  }
+}
+
+/* =====================================================================
+   Alerts feed
+   ===================================================================== */
+const alertEls = new Map();            // alert id -> element
+const devinCollapsed = new Set();      // alert ids whose Devin details the operator closed
+const AF = { state: 'open', liveOnly: false, hideSim: false };
+let alertRenderPending = false;
+
+const isActive = a => a.state === 'open' || a.state === 'acknowledged' || !a.state;
+function passesToggles(a) {
+  if (AF.liveOnly && !a.live) return false;
+  if (AF.hideSim && a.simulated) return false;
+  return true;
+}
+function passesFilter(a) { return passesToggles(a) && (AF.state === 'all' || isActive(a)); }
+
+function onAlert(a, fromStream) {
+  if (!a || !a.id) return;
+  const isNew = !S.alerts.has(a.id);
+  S.alerts.set(a.id, a);
+  let el = alertEls.get(a.id);
+  if (!el) {
+    el = document.createElement('article');
+    el.className = 'alert';
+    el.dataset.id = a.id;
+    alertEls.set(a.id, el);
+  }
+  renderAlertCard(el, a);
+  scheduleAlertList();
+  if (fromStream && isNew && a.severity === 'critical' && isActive(a) && passesFilter(a)) {
+    el.classList.remove('flash');
+    void el.offsetWidth;
+    el.classList.add('flash');
+    alarmBorder();
+    beep();
+  }
+}
+
+function notificationsFor(a) {
+  const out = [];
+  const ids = new Set(Array.isArray(a.notified) ? a.notified : []);
+  for (const n of S.notifications.values()) if (ids.has(n.id) || n.alert_id === a.id) out.push(n);
+  return { list: out, count: Math.max(out.length, ids.size) };
+}
+function notifyChip(a) {
+  const { list, count } = notificationsFor(a);
+  if (!count) return '';
+  let st = null, label = 'Escalated';
+  const call = list.find(n => n.channel === 'call' && n.status !== 'dry_run');
+  if (call) { st = CALL_TONE[call.status] || 'pending'; label = CALL_LABEL[call.status] || call.status; }
+  else if (list.some(n => n.status === 'sent')) { st = 'sent'; label = NOTIFY_STATUS.sent; }
+  else if (list.some(n => n.status === 'dry_run')) { st = 'dry_run'; label = NOTIFY_STATUS.dry_run; }
+  else if (list.some(n => n.status === 'failed')) { st = 'failed'; label = NOTIFY_STATUS.failed; }
+  const title = list.map(n => `${n.to || '?'}: ${n.status}${n.error ? ' (' + n.error + ')' : ''}`).join('\n');
+  return `<span class="chip wa-chip ${st || ''}" title="${esc(title)}">${esc(label)}${count > 1 ? ` · ${count}` : ''}</span>`;
+}
+
+function renderAlertCard(el, a) {
+  const sev = ['critical', 'warning', 'info'].includes(a.severity) ? a.severity : 'info';
+  const st = a.state || 'open';
+  const closed = st === 'resolved' || st === 'false_alarm';
+  const d = a.devin;
+  const devinBusy = d && ['queued', 'running', 'done'].includes(d.status);
+  el.classList.toggle('closed', closed);
+  let actions = '';
+  if (st === 'open') actions += '<button type="button" class="btn sm" data-action="ack">Acknowledge</button>';
+  if (!closed) {
+    actions += '<button type="button" class="btn sm primary" data-action="resolve">Resolve</button>';
+    actions += '<button type="button" class="btn sm ghost" data-action="false_alarm">False alarm</button>';
+  }
+  if (a.has_window) actions += '<button type="button" class="btn sm ghost" data-action="trace">View trace</button>';
+  if (!devinBusy) actions += `<button type="button" class="btn sm devin" data-action="devin">${d && d.status === 'error' ? 'Retry Devin analysis' : 'Analyze with Devin'}</button>`;
+  if (!closed) actions += '<button type="button" class="btn sm ghost" data-action="notify">Escalate</button>';
+
+  el.innerHTML = `<div class="sev-bar sev-${sev}"></div>
+    <div class="alert-body">
+      <div class="alert-top sev-${sev}">
+        <span class="sev-label">${esc(ALERT_TYPE[a.type] || a.type || 'Alert')}</span>
+        ${a.live ? '<span class="tag tag-live">LIVE</span>' : ''}
+        ${a.simulated ? '<span class="tag tag-sim">SIMULATED</span>' : ''}
+        <span class="spacer"></span>
+        ${notifyChip(a)}
+        <span class="state-chip st-${esc(st)}">${esc(ALERT_STATE[st] || st)}</span>
+      </div>
+      <div class="alert-title">${esc(a.title || 'Alert')}</div>
+      <div class="alert-sub">
+        <button type="button" class="linklike" data-action="worker" data-wid="${esc(a.worker_id)}">${esc(a.worker_name || a.worker_id || 'Unknown worker')}</button>
+        <span class="mono dim">${esc(a.worker_id || '')}</span><span class="sep"></span>
+        <span class="rel" data-ts="${isNum(a.ts) ? a.ts : ''}">${relTime(a.ts)}</span>
+        <span class="mono dim">${esc(a.id)}</span>
+        ${a.incident_id ? `<a class="mono dim" href="/v1/incidents/${encodeURIComponent(a.incident_id)}" target="_blank" rel="noopener" title="Incident record">${esc(a.incident_id)}</a>` : ''}
+      </div>
+      ${a.message ? `<p class="alert-msg" dir="auto">${esc(a.message)}</p>` : ''}
+      ${actions ? `<div class="alert-actions">${actions}</div>` : ''}
+      ${d ? devinHTML(a) : ''}
+    </div>`;
+}
+
+function devinHTML(a) {
+  const d = a.devin;
+  const status = d.status || 'queued';
+  const local = d.engine === 'local';
+  const v = VERDICT[d.verdict];
+  const url = safeUrl(d.url);
+  let conf = null;
+  if (isNum(d.confidence)) conf = Math.round(d.confidence <= 1 ? d.confidence * 100 : d.confidence);
+  let h = `<div class="devin devin-${esc(status)}${local ? ' devin-local' : ''}">
+    <div class="devin-head">
+      <span class="engine ${local ? 'engine-local' : 'engine-devin'}">${local ? 'Local analysis' : 'Devin'}</span>
+      ${status === 'queued' || status === 'running'
+        ? `<span class="devin-status"><span class="dots"><i></i><i></i><i></i></span>${status === 'queued' ? 'Queued' : 'Analysing incident'}</span>` : ''}
+      ${status === 'error' ? '<span class="devin-status err">Analysis failed</span>' : ''}
+      ${url ? `<a class="devin-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open session ${ICON_EXT}</a>`
+        : (d.session_id ? `<span class="mono dim">${esc(d.session_id)}</span>` : '')}
+      <span class="spacer"></span>
+      ${v ? `<span class="verdict ${v[1]}">${v[0]}</span>` : (d.verdict ? `<span class="verdict v-grey">${esc(d.verdict)}</span>` : '')}
+      ${conf != null ? `<span class="conf" title="Confidence"><span class="conf-bar"><i style="width:${clamp(conf, 0, 100)}%"></i></span>${conf}%</span>` : ''}
+    </div>`;
+  if (d.summary) h += `<p class="devin-summary" dir="auto">${esc(d.summary)}</p>`;
+  const ev = Array.isArray(d.evidence) ? d.evidence : [];
+  const ra = Array.isArray(d.recommended_actions) ? d.recommended_actions : [];
+  if (ev.length || ra.length) {
+    h += `<details class="devin-more"${devinCollapsed.has(a.id) ? '' : ' open'}>
+      <summary>Evidence (${ev.length}) and recommended actions (${ra.length})</summary>
+      <div class="devin-lists">
+        ${ev.length ? `<div><h4>Evidence</h4><ul>${ev.map(x => `<li dir="auto">${esc(x)}</li>`).join('')}</ul></div>` : ''}
+        ${ra.length ? `<div><h4>Recommended actions</h4><ul>${ra.map(x => `<li dir="auto">${esc(x)}</li>`).join('')}</ul></div>` : ''}
+      </div>
+    </details>`;
+  }
+  const th = Array.isArray(d.suggested_threshold_changes) ? d.suggested_threshold_changes : [];
+  if (th.length) {
+    h += `<table class="thr"><caption>Suggested threshold changes</caption>
+      <thead><tr><th>Parameter</th><th>Current → proposed</th><th>Rationale</th></tr></thead>
+      <tbody>${th.map(t => `<tr><td class="mono">${esc(t.parameter)}</td>
+        <td class="mono nowrap">${esc(t.current)} → <b>${esc(t.proposed)}</b></td>
+        <td>${esc(t.rationale)}</td></tr>`).join('')}</tbody></table>`;
+  }
+  if (d.error) h += `<p class="devin-error">${esc(d.error)}</p>`;
+  return h + '</div>';
+}
+
+function scheduleAlertList() {
+  if (alertRenderPending) return;
+  alertRenderPending = true;
+  requestAnimationFrame(() => { alertRenderPending = false; renderAlertList(); });
+}
+function renderAlertList() {
+  const all = Array.from(S.alerts.values()).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  if (all.length > MAX_KEPT_ALERTS) {
+    for (const a of all.slice(MAX_KEPT_ALERTS)) { S.alerts.delete(a.id); alertEls.delete(a.id); devinCollapsed.delete(a.id); }
+    all.length = MAX_KEPT_ALERTS;
+  }
+  const toggled = all.filter(passesToggles);
+  const openN = toggled.filter(isActive).length;
+  $('#n-open').textContent = openN;
+  $('#n-all').textContent = toggled.length;
+  const shown = toggled.filter(a => AF.state === 'all' || isActive(a)).slice(0, MAX_RENDERED_ALERTS);
+
+  const list = $('#alert-list');
+  const want = new Set(shown.map(a => alertEls.get(a.id)));
+  for (const child of Array.from(list.children)) if (!want.has(child)) child.remove();
+  let ref = list.firstElementChild;
+  for (const a of shown) {
+    const el = alertEls.get(a.id);
+    if (el === ref) ref = ref.nextElementSibling;
+    else list.insertBefore(el, ref);
+  }
+  const empty = $('#alert-empty');
+  empty.hidden = shown.length > 0;
+  empty.textContent = AF.state === 'open' ? 'No open alerts. The site is quiet.' : 'No alerts match these filters.';
+
+  const crit = all.filter(a => isActive(a) && a.severity === 'critical').length;
+  $('#alert-count').textContent = `${plural(all.filter(isActive).length, 'active alert')}${crit ? ` · ${crit} critical` : ''}`;
+  document.title = crit ? `(${crit}) HeatGuard · Site operations` : 'HeatGuard · Site operations';
+}
+
+async function alertAction(id, action, btn) {
+  const a = S.alerts.get(id);
+  const who = a ? (a.worker_name || a.worker_id) : id;
+  const labels = { ack: 'Acknowledged', resolve: 'Resolved', false_alarm: 'Marked as false alarm' };
+  if (btn) btn.classList.add('busy');
+  try {
+    const res = await api('POST', `/alerts/${encodeURIComponent(id)}/${action}`);
+    if (action === 'notify') {
+      const ns = res && Array.isArray(res.notifications) ? res.notifications : [];
+      for (const n of ns) onNotify(n);
+      const live = ns.filter(n => n.status !== 'dry_run' && n.status !== 'failed');
+      if (!ns.length) toast(`Escalation requested for ${who}`, 'ok');
+      else if (live.length) toast(`Escalating ${who}: ${live.map(n => n.channel === 'call' ? 'calling ' + n.to : 'WhatsApp to ' + n.to).join(', ')}`, 'ok');
+      else if (ns.every(n => n.status === 'dry_run')) toast(`Dry run: escalation composed for ${who}, not sent`, 'info');
+      else toast(`Escalation failed: ${(ns.find(n => n.error) || {}).error || 'provider error'}`, 'error');
+      return;
+    }
+    const upd = res && (res.id === id ? res : (res.alert && res.alert.id === id ? res.alert : null));
+    if (upd) onAlert(upd, false);
+    if (action === 'devin') {
+      const cur = S.alerts.get(id);
+      if (cur && !upd && (!cur.devin || cur.devin.status === 'error')) {
+        onAlert(Object.assign({}, cur, { devin: { status: 'queued', engine: S.config.devin_configured ? 'devin' : 'local' } }), false);
+      }
+      toast(S.config.devin_configured ? `Devin is analysing the incident for ${who}` : `Local analysis started for ${who}`, 'ok');
+    } else {
+      toast(`${labels[action] || 'Updated'}: ${a ? a.title : id} · ${who}`, 'ok');
+    }
+  } catch (e) {
+    const what = { ack: 'acknowledge', resolve: 'resolve', false_alarm: 'mark as false alarm', devin: 'start analysis', notify: 'send WhatsApp escalation' }[action] || action;
+    toast(`Could not ${what}: ${e.message}`, 'error');
+  } finally {
+    if (btn && btn.isConnected) btn.classList.remove('busy');
+  }
+}
+
+function focusWorker(id) {
+  if (!id) return;
+  const card = liveCards.get(id);
+  if (card) {
+    card.root.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.root.classList.remove('ping');
+    void card.root.offsetWidth;
+    card.root.classList.add('ping');
+  } else {
+    openDrawer(id);
+  }
+}
+
+function initAlerts() {
+  const list = $('#alert-list');
+  list.addEventListener('click', e => {
+    const b = e.target.closest('[data-action]');
+    if (!b) return;
+    const card = b.closest('.alert');
+    const id = card && card.dataset.id;
+    if (!id) return;
+    const act = b.dataset.action;
+    if (act === 'trace') openTrace(id);
+    else if (act === 'worker') focusWorker(b.dataset.wid);
+    else alertAction(id, act, b);
+  });
+  list.addEventListener('toggle', e => {
+    if (!e.target.matches || !e.target.matches('details.devin-more')) return;
+    const id = e.target.closest('.alert').dataset.id;
+    if (e.target.open) devinCollapsed.delete(id); else devinCollapsed.add(id);
+  }, true);
+  $('#alert-filters').addEventListener('click', e => {
+    const f = e.target.closest('[data-f]');
+    const t = e.target.closest('[data-t]');
+    if (f) {
+      AF.state = f.dataset.f;
+      $$('#alert-filters [data-f]').forEach(b => b.classList.toggle('on', b === f));
+    } else if (t) {
+      AF[t.dataset.t] = !AF[t.dataset.t];
+      t.classList.toggle('on', AF[t.dataset.t]);
+      t.setAttribute('aria-pressed', String(AF[t.dataset.t]));
+    } else return;
+    storeSet('hg.alertFilter', JSON.stringify(AF));
+    renderAlertList();
+  });
+  try {
+    const saved = JSON.parse(storeGet('hg.alertFilter') || 'null');
+    if (saved) {
+      AF.state = saved.state === 'all' ? 'all' : 'open';
+      AF.liveOnly = !!saved.liveOnly;
+      AF.hideSim = !!saved.hideSim;
+      $$('#alert-filters [data-f]').forEach(b => b.classList.toggle('on', b.dataset.f === AF.state));
+      $$('#alert-filters [data-t]').forEach(b => { b.classList.toggle('on', !!AF[b.dataset.t]); b.setAttribute('aria-pressed', String(!!AF[b.dataset.t])); });
+    }
+  } catch (e) { /* ignore bad saved filter */ }
+}
+
+/* =====================================================================
+   Trace modal (GET /alerts/{id}/window)
+   ===================================================================== */
+const trace = { id: null, open: false, src: null, event: null, dirty: false, cA: null, cG: null };
+
+async function openTrace(id) {
+  const a = S.alerts.get(id);
+  trace.id = id;
+  trace.open = true;
+  trace.src = null;
+  trace.event = null;
+  trace.dirty = true;
+  $('#trace-kicker').textContent = `Motion trace · ${id}`;
+  $('#trace-title').textContent = a ? `${a.title || 'Alert'} · ${a.worker_name || a.worker_id || ''}` : id;
+  $('#trace-stats').innerHTML = '';
+  const msg = $('#trace-msg');
+  msg.className = 'trace-msg';
+  msg.textContent = 'Loading the sensor window…';
+  $('#trace-modal').hidden = false;
+  try {
+    const d = await api('GET', `/alerts/${encodeURIComponent(id)}/window`);
+    if (trace.id !== id || !trace.open) return;
+    const samples = d && Array.isArray(d.samples) ? d.samples : [];
+    const ring = new Ring(Math.max(1, samples.length));
+    for (const s of samples) if (Array.isArray(s) && s.length >= 7) ring.push(+s[0], +s[1], +s[2], +s[3], +s[4], +s[5], +s[6]);
+    trace.src = ring;
+    trace.event = d && isNum(d.event_t_ms) ? d.event_t_ms : null;
+    trace.dirty = true;
+    if (!ring.n) { msg.textContent = 'No samples were stored for this alert.'; return; }
+    msg.textContent = '';
+    let pk = 0, mn = Infinity, pg = 0;
+    for (let k = 0; k < ring.n; k++) {
+      const i = (ring.start + k) % ring.cap;
+      pk = Math.max(pk, ring.col.am[i]); mn = Math.min(mn, ring.col.am[i]); pg = Math.max(pg, ring.col.gm[i]);
+    }
+    const dur = (ring.lastT - ring.firstT) / 1000;
+    const hz = dur > 0 ? (ring.n - 1) / dur : 0;
+    $('#trace-stats').innerHTML = [
+      ['Peak |a|', `${fx(pk, 2)}<small>g</small>`], ['Lowest |a|', `${fx(mn, 2)}<small>g</small>`],
+      ['Peak |ω|', `${fx(pg, 0)}<small>deg/s</small>`], ['Window', `${fx(dur, 1)}<small>s</small>`],
+      ['Samples', `${fi(ring.n)}<small>${hz ? '@ ' + fx(hz, 0) + ' Hz' : ''}</small>`],
+    ].map(([k, v]) => `<div class="metric"><div class="label">${k}</div><div class="val">${v}</div></div>`).join('');
+  } catch (e) {
+    if (trace.id !== id) return;
+    msg.className = 'trace-msg err';
+    msg.textContent = `Could not load the trace: ${e.message}`;
+    toast(`Could not load trace for ${id}: ${e.message}`, 'error');
+  }
+}
+function closeTrace() {
+  trace.open = false;
+  trace.id = null;
+  $('#trace-modal').hidden = true;
+}
+function drawTrace() {
+  trace.dirty = false;
+  fitCanvas(trace.cA);
+  fitCanvas(trace.cG);
+  const src = trace.src;
+  if (!src || !src.n) { drawEmptyChart(trace.cA, src ? 'No samples' : 'Loading…'); drawEmptyChart(trace.cG, ''); return; }
+  const t0 = src.firstT, t1 = Math.max(src.lastT, t0 + 1);
+  const ev = trace.event;
+  const base = isNum(ev) ? ev : t0;
+  const span = t1 - t0;
+  const step = span > 40000 ? 10000 : span > 20000 ? 5000 : span > 12000 ? 2000 : 1000;
+  const xGrid = [], xLabels = [];
+  for (let t = base - Math.ceil((base - t0) / step) * step; t <= t1; t += step) {
+    xGrid.push(t);
+    const rel = Math.round((t - base) / 1000);
+    xLabels.push({ t, text: isNum(ev) ? `${rel > 0 ? '+' : ''}${rel} s` : `${rel} s` });
+  }
+  let aMax = 0, gMax = 0;
+  for (let k = 0; k < src.n; k++) {
+    const i = (src.start + k) % src.cap;
+    aMax = Math.max(aMax, src.col.am[i]);
+    gMax = Math.max(gMax, Math.abs(src.col.gx[i]), Math.abs(src.col.gy[i]), Math.abs(src.col.gz[i]));
+  }
+  const ya = Math.max(2.5, Math.ceil(aMax * 1.1 * 2) / 2);
+  const yg = Math.max(100, gMax * 1.1);
+  drawChart(trace.cA, src, { t0, t1, padR: 58, yMin: 0, yMax: ya, yTicks: accelTicks(ya), xGrid, xLabels, refs: accelRefs(),
+    series: [{ key: 'am', color: C['chart-a'], width: 1.6 }], marker: ev });
+  drawChart(trace.cG, src, { t0, t1, padR: 58, yMin: -yg, yMax: yg, yTicks: gyroTicks(yg), zeroLine: true, xGrid, xLabels,
+    series: gyroSeries(), marker: ev });
+}
+
+/* =====================================================================
+   Wearable voice assistant log (SSE 'voice', upsert by id, grouped by turn_id)
+   ===================================================================== */
+const turnEls = new Map();      // turn_id -> element
+const dirtyTurns = new Set();
+let voiceRenderPending = false;
+const ROLE_RANK = { worker: 0, tool: 1, assistant: 2 };
+
+function onVoice(v) {
+  if (!v || !v.id) return;
+  const turn = v.turn_id || v.id;
+  S.voice.set(v.id, Object.assign({}, v, { turn_id: turn }));
+  dirtyTurns.add(turn);
+  if (!voiceRenderPending) {
+    voiceRenderPending = true;
+    requestAnimationFrame(renderVoice);
+  }
+}
+function renderVoiceStatus() {
+  const el = $('#voice-status');
+  const as = S.config.assistant;
+  if (as && as.enabled) {
+    el.className = 'chip t-ok';
+    el.textContent = `OpenAI · ${as.model || 'voice'}`;
+    el.title = '';
+  } else if (as) {
+    el.className = 'chip t-muted';
+    el.textContent = `Offline: ${as.reason || 'not configured'}`;
+    el.title = as.reason || '';
+  } else {
+    el.className = 'chip t-muted';
+    el.textContent = 'Status unknown';
+  }
+}
+function renderVoice() {
+  voiceRenderPending = false;
+  const log = $('#voice-log');
+  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+  const byTurn = new Map();
+  for (const e of S.voice.values()) {
+    if (!byTurn.has(e.turn_id)) byTurn.set(e.turn_id, []);
+    byTurn.get(e.turn_id).push(e);
+  }
+  // keep the newest turns only
+  const turns = Array.from(byTurn.entries())
+    .map(([id, es]) => ({ id, es, ts: Math.min(...es.map(e => (isNum(e.ts) ? e.ts : Infinity))) }))
+    .sort((a, b) => a.ts - b.ts);
+  const drop = turns.length - MAX_VOICE_TURNS;
+  for (let k = 0; k < drop; k++) {
+    for (const e of turns[k].es) S.voice.delete(e.id);
+    const el = turnEls.get(turns[k].id);
+    if (el) el.remove();
+    turnEls.delete(turns[k].id);
+  }
+  const keep = turns.slice(Math.max(0, drop));
+  for (const t of keep) {
+    let el = turnEls.get(t.id);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'turn';
+      turnEls.set(t.id, el);
+      dirtyTurns.add(t.id);
+    }
+    if (dirtyTurns.has(t.id)) el.innerHTML = turnHTML(t.es);
+  }
+  dirtyTurns.clear();
+  // order in DOM by first timestamp (oldest at top, chat style)
+  let ref = $('#voice-empty').nextElementSibling;
+  for (const t of keep) {
+    const el = turnEls.get(t.id);
+    if (el === ref) ref = ref.nextElementSibling;
+    else log.insertBefore(el, ref);
+  }
+  $('#voice-empty').hidden = keep.length > 0;
+  if (atBottom) log.scrollTop = log.scrollHeight;
+}
+function turnHTML(es) {
+  es = es.slice().sort((a, b) => (ROLE_RANK[a.role] ?? 3) - (ROLE_RANK[b.role] ?? 3) || (a.ts || 0) - (b.ts || 0));
+  const first = es[0];
+  const name = (es.find(e => e.worker_name) || {}).worker_name || first.worker_id || 'Worker';
+  let h = `<div class="turn-meta"><span>${esc(name)}</span><span class="mono">${clockOf(first.ts)}</span></div>`;
+  for (const e of es) {
+    const text = e.text || '';
+    if (e.role === 'tool') {
+      h += `<div class="tool-line"><b>Tool</b><span dir="auto">${esc(text)}</span></div>`;
+    } else if (e.role === 'assistant') {
+      h += `<div class="bubble assistant${e.final === false ? ' partial' : ''}"><span class="who">Assistant</span><span class="txt" dir="auto">${esc(text)}</span></div>`;
+    } else {
+      h += `<div class="bubble worker${e.final === false ? ' partial' : ''}"><span class="who">${esc(name)}</span><span class="txt" dir="auto">${esc(text || '…')}</span></div>`;
+    }
+  }
+  return h;
+}
+
+/* =====================================================================
+   WhatsApp escalations (SSE 'notify', upsert by id)
+   ===================================================================== */
+const waOpen = new Set();
+let waRenderPending = false;
+
+function onNotify(n, quiet) {
+  if (!n || !n.id) return;
+  S.notifications.set(n.id, n);
+  if (n.alert_id && S.alerts.has(n.alert_id)) {
+    const a = S.alerts.get(n.alert_id);
+    const el = alertEls.get(a.id);
+    if (el) renderAlertCard(el, a);
+  }
+  if (!waRenderPending) {
+    waRenderPending = true;
+    requestAnimationFrame(renderWa);
+  }
+}
+function renderWaHeader() {
+  const wa = S.config.whatsapp;
+  const st = $('#wa-status'), sub = $('#wa-sub');
+  if (!wa) { st.className = 'chip t-muted'; st.textContent = 'Status unknown'; sub.textContent = ''; return; }
+  const n = Array.isArray(wa.recipients) ? wa.recipients.length : 0;
+  sub.textContent = n ? `HSE on-call · ${plural(n, 'recipient')}` : 'No recipients configured';
+  sub.title = n ? wa.recipients.join(', ') : '';
+  if (wa.enabled && !wa.dry_run) { st.className = 'chip t-ok'; st.textContent = providerName(wa.provider); }
+  else { st.className = 'chip t-caution'; st.textContent = 'Dry run · not sending'; }
+}
+function renderWa() {
+  waRenderPending = false;
+  const all = Array.from(S.notifications.values()).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  for (const n of all.slice(MAX_NOTIFICATIONS)) { S.notifications.delete(n.id); waOpen.delete(n.id); }
+  const shown = all.slice(0, MAX_NOTIFICATIONS);
+  const list = $('#wa-list');
+  if (!shown.length) { list.innerHTML = '<div class="wa-empty">No escalations sent yet. Critical alerts and help requests go to the HSE on-call here.</div>'; return; }
+  list.innerHTML = shown.map(n => {
+    const isCall = n.channel === 'call';
+    const st = isCall ? (CALL_TONE[n.status] || 'pending') : (['sent', 'failed', 'dry_run'].includes(n.status) ? n.status : '');
+    const stLabel = isCall ? (CALL_LABEL[n.status] || n.status || '—') : ({ sent: 'Sent', failed: 'Failed', dry_run: 'Dry run' }[st] || (n.status || '—'));
+    const dry = n.provider === 'dryrun' || n.status === 'dry_run';
+    const text = n.text || '';
+    const first = text.split('\n').find(l => l.trim()) || '(empty message)';
+    const loc = n.location || {};
+    const maps = safeUrl(loc.maps_url);
+    const open = waOpen.has(n.id);
+    return `<div class="wa-item" data-id="${esc(n.id)}">
+      <button type="button" class="wa-row" aria-expanded="${open}">
+        <span class="wa-time">${clockOf(n.ts)}</span>
+        <span class="wa-to"><span class="tag">${isCall ? 'CALL' : 'WHATSAPP'}</span> ${esc(n.to || '—')}</span>
+        <span class="wa-flags">${dry ? '<span class="tag">DRY RUN</span>' : ''}${!dry || st !== 'dry_run' ? `<span class="chip wa-chip ${st}">${esc(stLabel)}</span>` : ''}</span>
+        ${maps ? `<a class="wa-map" href="${esc(maps)}" target="_blank" rel="noopener noreferrer" title="${esc(loc.label || 'Open location')}">Map ${ICON_EXT}</a>` : '<span></span>'}
+        <span class="wa-first" dir="auto">${esc(first)}</span>
+      </button>
+      ${open ? `<div class="wa-full" dir="auto">${esc(text)}${loc.label ? `\n\nLocation: ${esc(loc.label)}` : ''}${n.alert_id ? `\nAlert: ${esc(n.alert_id)}` : ''}</div>` : ''}
+      ${open && n.error ? `<div class="wa-err">${esc(n.error)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+function initWa() {
+  $('#wa-list').addEventListener('click', e => {
+    if (e.target.closest('a')) return;   // map link opens without toggling
+    const row = e.target.closest('.wa-row');
+    if (!row) return;
+    const id = row.parentElement.dataset.id;
+    if (waOpen.has(id)) waOpen.delete(id); else waOpen.add(id);
+    renderWa();
+  });
+}
+
+/* =====================================================================
+   Fleet grid (one canvas, 1,200 tiles)
+   ===================================================================== */
+const FL = { cv: null, ctx: null, wrap: null, W: 0, H: 0, dpr: 1, size: 11, gap: 2, pitch: 13, cols: 1,
+  tiles: '', alertIdx: [], hover: -1, focus: null, lastPulse: 0, needsLayout: true };
+const TILE_ALPHA = { ok: 0.55, caution: 1, rest: 0.85, alert: 1, offline: 0.45 };
+const countEls = {};
+
+function initFleet() {
+  FL.cv = $('#fleet-canvas');
+  FL.ctx = FL.cv.getContext('2d');
+  FL.wrap = $('#fleet-wrap');
+  const box = $('#fleet-counts');
+  box.innerHTML = STATUS_ORDER.map(k => `<button type="button" class="count-chip t-${STATUS[k].tone}" data-s="${k}" aria-pressed="false">
+    <i class="sw"></i><span class="k">${STATUS[k].label}</span><span class="v">—</span></button>`).join('');
+  for (const k of STATUS_ORDER) countEls[k] = box.querySelector(`[data-s="${k}"] .v`);
+  box.addEventListener('click', e => {
+    const b = e.target.closest('[data-s]');
+    if (!b) return;
+    FL.focus = FL.focus === b.dataset.s ? null : b.dataset.s;
+    $$('.count-chip', box).forEach(x => { x.classList.toggle('on', x.dataset.s === FL.focus); x.setAttribute('aria-pressed', String(x.dataset.s === FL.focus)); });
+    fleetDrawAll();
+  });
+  let lastW = 0;
+  new ResizeObserver(() => {
+    const w = FL.wrap.clientWidth;
+    if (w !== lastW) { lastW = w; FL.needsLayout = true; fleetDrawAll(); }
+  }).observe(FL.wrap);
+
+  FL.cv.addEventListener('mousemove', e => {
+    const r = FL.cv.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const col = Math.floor(x / FL.pitch), row = Math.floor(y / FL.pitch);
+    let i = -1;
+    if (col >= 0 && col < FL.cols && row >= 0) { i = row * FL.cols + col; if (i >= FL.tiles.length) i = -1; }
+    setHover(i);
+    const tt = $('#tooltip');
+    if (i < 0) { tt.hidden = true; return; }
+    const st = TILE[FL.tiles[i]] || 'offline';
+    tt.innerHTML = `<b>${esc(fleetId(i))}</b><span class="tt-st t-${STATUS[st].tone}"><i></i>${STATUS[st].label}</span><div class="tt-hint">Click for details</div>`;
+    tt.hidden = false;
+    const tw = tt.offsetWidth, th = tt.offsetHeight;
+    tt.style.left = `${Math.min(e.clientX + 14, window.innerWidth - tw - 8)}px`;
+    tt.style.top = `${e.clientY + 16 + th > window.innerHeight ? e.clientY - th - 10 : e.clientY + 16}px`;
+  });
+  FL.cv.addEventListener('mouseleave', () => { setHover(-1); $('#tooltip').hidden = true; });
+  FL.cv.addEventListener('click', () => { if (FL.hover >= 0) openDrawer(fleetId(FL.hover)); });
+}
+function fleetId(i) {
+  const f = S.fleet || {};
+  const w = isNum(f.id_width) ? f.id_width : 4;
+  return `${f.ids_prefix != null ? f.ids_prefix : 'W-'}${String(i + 1).padStart(w, '0')}`;
+}
+function fleetLayout() {
+  const W = Math.floor(FL.wrap.clientWidth);
+  if (!W) return false;
+  FL.size = W >= 1500 ? 12 : W < 700 ? 9 : 11;
+  FL.pitch = FL.size + FL.gap;
+  FL.cols = Math.max(1, Math.floor((W + FL.gap) / FL.pitch));
+  const rows = Math.max(1, Math.ceil(Math.max(1, FL.tiles.length) / FL.cols));
+  const H = rows * FL.pitch - FL.gap;
+  const dpr = window.devicePixelRatio || 1;
+  FL.W = W; FL.H = H; FL.dpr = dpr;
+  FL.cv.style.width = `${W}px`;
+  FL.cv.style.height = `${H}px`;
+  FL.cv.width = Math.round(W * dpr);
+  FL.cv.height = Math.round(H * dpr);
+  FL.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  FL.needsLayout = false;
+  return true;
+}
+function fleetDrawTile(i, pulse) {
+  const ctx = FL.ctx, s = FL.size;
+  const x = (i % FL.cols) * FL.pitch, y = Math.floor(i / FL.cols) * FL.pitch;
+  ctx.clearRect(x - 1.5, y - 1.5, s + 3, s + 3);
+  const st = TILE[FL.tiles[i]] || 'offline';
+  let a = TILE_ALPHA[st] * (pulse == null ? 1 : pulse);
+  if (FL.focus && FL.focus !== st) a = 0.1;
+  ctx.globalAlpha = a;
+  ctx.fillStyle = C[st];
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, s, s, 2); else ctx.rect(x, y, s, s);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  if (i === FL.hover) {
+    ctx.strokeStyle = C.text;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x - 0.75, y - 0.75, s + 1.5, s + 1.5);
+  }
+}
+function fleetDrawAll() {
+  if (!FL.ctx) return;
+  if (FL.needsLayout && !fleetLayout()) return;
+  FL.ctx.clearRect(0, 0, FL.W, FL.H);
+  for (let i = 0; i < FL.tiles.length; i++) fleetDrawTile(i);
+}
+function setHover(i) {
+  if (i === FL.hover) return;
+  const old = FL.hover;
+  FL.hover = i;
+  if (old >= 0 && old < FL.tiles.length) fleetDrawTile(old);
+  if (i >= 0) fleetDrawTile(i);
+}
+function fleetPulse(now) {
+  if (!FL.alertIdx.length || now - FL.lastPulse < 40) return;
+  FL.lastPulse = now;
+  const p = 0.4 + 0.6 * (0.5 + 0.5 * Math.cos(now / 260));
+  for (const i of FL.alertIdx) fleetDrawTile(i, p);
+}
+function onFleet(f) {
+  if (!f || typeof f !== 'object') return;
+  S.fleet = f;
+  const c = f.counts || {};
+  const tiles = typeof f.tiles === 'string' ? f.tiles : '';
+  const total = isNum(c.total) ? c.total : tiles.length;
+  $('#fleet-title').textContent = `Fleet · ${fi(total)} workers`;
+  for (const k of STATUS_ORDER) countEls[k].textContent = fi(isNum(c[k]) ? c[k] : 0);
+  const prev = FL.tiles;
+  FL.tiles = tiles;
+  if (prev.length !== tiles.length) FL.needsLayout = true;
+  if (FL.needsLayout) {
+    fleetDrawAll();
+  } else {
+    for (let i = 0; i < tiles.length; i++) if (tiles.charCodeAt(i) !== prev.charCodeAt(i)) fleetDrawTile(i);
+  }
+  const idx = [];
+  for (let i = 0; i < tiles.length; i++) if (tiles.charCodeAt(i) === 97 /* 'a' */) idx.push(i);
+  FL.alertIdx = idx;
+  if (DR.id && !S.live.has(DR.id)) refreshDrawer();
+}
+
+/* =====================================================================
+   Worker drawer (fleet tile click, GET /workers/{id})
+   ===================================================================== */
+const DR = { id: null, worker: null, inflight: false };
+
+function openDrawer(id) {
+  if (!id) return;
+  DR.id = id;
+  DR.worker = null;
+  $('#dr-kicker').textContent = id;
+  $('#dr-title').textContent = 'Loading…';
+  $('#dr-body').innerHTML = '<div class="drawer-msg">Loading worker details…</div>';
+  $('#drawer').classList.add('open');
+  $('#drawer').setAttribute('aria-hidden', 'false');
+  $('#scrim').hidden = false;
+  $('#tooltip').hidden = true;
+  const live = S.live.get(id);
+  if (live) renderDrawer(live);
+  refreshDrawer();
+}
+function closeDrawer() {
+  DR.id = null;
+  DR.worker = null;
+  $('#drawer').classList.remove('open');
+  $('#drawer').setAttribute('aria-hidden', 'true');
+  $('#scrim').hidden = true;
+}
+async function refreshDrawer() {
+  const id = DR.id;
+  if (!id || DR.inflight) return;
+  DR.inflight = true;
+  try {
+    const w = await api('GET', `/workers/${encodeURIComponent(id)}`);
+    if (DR.id === id && w) { w.__recv = performance.now(); renderDrawer(w); }
+  } catch (e) {
+    if (DR.id === id && !DR.worker) {
+      $('#dr-title').textContent = id;
+      $('#dr-body').innerHTML = `<div class="drawer-msg err">Could not load ${esc(id)}: ${esc(e.message)}</div>`;
+      toast(`Could not load worker ${id}: ${e.message}`, 'error');
+    }
+  } finally {
+    DR.inflight = false;
+  }
+}
+function renderDrawer(w) {
+  if (!w || w.id !== DR.id) return;
+  DR.worker = w;
+  $('#dr-kicker').textContent = `${w.id}${w.live ? ' · live wearable' : ' · simulated'}`;
+  $('#dr-title').textContent = w.name || w.id;
+  const meta = [w.trade, w.zone, w.crew ? `Crew ${w.crew}` : null].filter(Boolean).map(esc).join(' · ');
+  $('#dr-body').innerHTML = `
+    <div class="dr-top">${statusBadge(w.status, true)}<div><div class="dr-meta">${meta || '—'}</div>
+      <div class="dim" style="font-size:.76rem">Updated <span class="rel" data-ts="${isNum(w.updated) ? w.updated : ''}">${relTime(w.updated)}</span></div></div></div>
+    <section class="lc-phase">${phaseHTML(w)}</section>
+    <section class="stats">${statsHTML(w)}</section>`;
+}
+function initDrawer() {
+  $('#dr-close').addEventListener('click', closeDrawer);
+  $('#scrim').addEventListener('click', closeDrawer);
+  $('#dr-rest').addEventListener('click', e => { if (DR.id) workerCommand('rest', DR.id, DR.worker && DR.worker.name, e.currentTarget); });
+  $('#dr-buzz').addEventListener('click', e => { if (DR.id) workerCommand('buzz', DR.id, DR.worker && DR.worker.name, e.currentTarget); });
+}
+
+/* =====================================================================
+   Render loop (charts + fleet pulse) and 1 s ticker
+   ===================================================================== */
+let lastReadout = 0;
+let lastDpr = window.devicePixelRatio || 1;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (document.hidden) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (dpr !== lastDpr) {
+    lastDpr = dpr;
+    for (const card of liveCards.values()) { card.cA.needsFit = true; card.cG.needsFit = true; }
+    FL.needsLayout = true;
+    fleetDrawAll();
+    trace.dirty = true;
+  }
+  for (const card of liveCards.values()) drawLive(card, now);
+  if (now - lastReadout > 250) {
+    lastReadout = now;
+    for (const card of liveCards.values()) updateReadouts(card, now);
+  }
+  fleetPulse(now);
+  if (trace.open && (trace.dirty || trace.cA.needsFit || trace.cG.needsFit)) drawTrace();
+}
+
+function tick() {
+  const d = new Date();
+  $('#clock-time').textContent = dubaiClock.format(d);
+  $('#clock-sub').textContent = `${dubaiDate.format(d)} · Dubai (GST)`;
+  for (const el of document.querySelectorAll('.rel[data-ts]')) {
+    const ts = parseFloat(el.dataset.ts);
+    if (isNum(ts)) el.textContent = relTime(ts);
+  }
+  const tw = Number(S.config.timewarp) || 1;
+  const now = performance.now();
+  for (const el of document.querySelectorAll('[data-rest-s]')) {
+    let s = parseFloat(el.dataset.restS);
+    // At real time, count down smoothly between 1 Hz worker updates. Under time warp show the server value.
+    if (tw === 1) s -= (now - parseFloat(el.dataset.recv)) / 1000;
+    el.textContent = mmss(s);
+  }
+  if (!MOCK && S.stream === 'live' && now - lastMsgAt > 15000) {
+    setStreamState('reconnecting');   // the server sends fleet every 2 s, so silence means a dead stream
+    connectStream();
+  }
+}
+
+/* =====================================================================
+   Boot
+   ===================================================================== */
+function applyTheme(t) {
+  if (t === 'light') document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+  readTokens();
+  for (const card of liveCards.values()) card.emptyDrawn = false;
+  trace.dirty = true;
+  fleetDrawAll();
+}
+
+function initChrome() {
+  renderMute();
+  const arm = () => { if (!audio.armed || (audio.ctx && audio.ctx.state === 'suspended')) armAudio(); };
+  window.addEventListener('pointerdown', arm, true);
+  window.addEventListener('keydown', arm, true);
+  $('#btn-mute').addEventListener('click', () => {
+    audio.muted = !audio.muted;
+    storeSet('hg.muted', audio.muted ? '1' : '0');
+    renderMute();
+    toast(audio.muted ? 'Alert sound muted' : 'Alert sound on', 'info', 2000);
+  });
+  $('#btn-theme').addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    storeSet('hg.theme', next);
+    applyTheme(next);
+  });
+
+  $('#ask-form').addEventListener('submit', e => { e.preventDefault(); closeAsk($('#ask-input').value.trim()); });
+  $('#ask-cancel').addEventListener('click', () => closeAsk(null));
+  $('#ask-presets').addEventListener('click', e => {
+    const b = e.target.closest('[data-v]');
+    if (b) { $('#ask-input').value = b.dataset.v; $('#ask-input').focus(); }
+  });
+  $('#ask-modal').addEventListener('mousedown', e => { if (e.target === e.currentTarget) closeAsk(null); });
+
+  trace.cA = makeCanvas($('#trace-a'), () => { trace.dirty = true; });
+  trace.cG = makeCanvas($('#trace-g'), () => { trace.dirty = true; });
+  $('#trace-close').addEventListener('click', closeTrace);
+  $('#trace-modal').addEventListener('mousedown', e => { if (e.target === e.currentTarget) closeTrace(); });
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!$('#ask-modal').hidden) closeAsk(null);
+    else if (trace.open) closeTrace();
+    else if (DR.id) closeDrawer();
+  });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) for (const c of liveCards.values()) c.emptyDrawn = false; });
+}
+
+async function boot() {
+  applyTheme(storeGet('hg.theme') === 'light' ? 'light' : 'dark');
+  initChrome();
+  initDemoControls();
+  initAlerts();
+  initWa();
+  initFleet();
+  initDrawer();
+  renderPills();
+  renderVoiceStatus();
+  renderWaHeader();
+  renderLiveEmpty();
+  renderAlertList();
+  renderWa();
+  tick();
+  setInterval(tick, 1000);
+  requestAnimationFrame(frame);
+
+  if (MOCK) {
+    Mock = createMock();
+    $('#pill-mock').hidden = false;
+  }
+  const ok = await loadState();
+  connectStream();
+  if (!ok) retryStateUntilSynced();
+}
+
+/* #####################################################################
+   MOCK MODE  (?mock=1)
+   A fake backend and a fake SSE stream generated entirely in the page,
+   so the dashboard can be checked without the FastAPI server.
+   Nothing in this block runs unless ?mock=1 is in the URL.
+   Extra flags: &live=0  no wearable connected
+                &drop=1  simulate a stream drop after 10 s
+                &wa=twilio  WhatsApp "sent" instead of dry run
+                &devin=local  Devin not configured (local analysis)
+                &voice=off  voice assistant offline
+   ##################################################################### */
+function createMock() {
+  const R = Math.random;
+  const pick = a => a[Math.floor(R() * a.length)];
+  const nowS = () => Date.now() / 1000;
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const r1 = v => Math.round(v * 10) / 10;
+  const r3 = v => Math.round(v * 1000) / 1000;
+  const sleep = ms => new Promise(res => setTimeout(res, ms));
+  const httpError = (code, msg) => new Error(`${code} ${msg}`);
+  const N = 1200;
+  const LIVE_ID = 'LIVE-7ce8b1e3';
+  const withLive = qs.get('live') !== '0';
+  const waProvider = qs.get('wa') || 'dryrun';
+  const RECIPIENTS = ['+9715•••••123', '+9715•••••847'];
+
+  const config = {
+    devin_configured: qs.get('devin') !== 'local',
+    devin_mode: qs.get('devin') === 'local' ? 'local' : 'devin',
+    serial_port: '/dev/cu.usbmodem2101',
+    serial_connected: withLive,
+    fleet_size: N,
+    timewarp: 1,
+    sim_events: true,
+    assistant: qs.get('voice') === 'off'
+      ? { enabled: false, model: 'gpt-realtime', reason: 'OPENAI_API_KEY missing' }
+      : { enabled: true, model: 'gpt-realtime', reason: null },
+    whatsapp: { provider: waProvider, enabled: waProvider !== 'dryrun', dry_run: waProvider === 'dryrun', recipients: RECIPIENTS },
+  };
+
+  let emit = () => {};
+  let paused = false;
+
+  /* ---------- site / weather ---------- */
+  const base = { temp_c: 37.6, rh: 46, wind_ms: 3.1, solar_wm2: 640 };
+  let override = null;
+  let site = null;
+  const partsFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric', hourCycle: 'h23' });
+  function dubaiParts() {
+    const p = {};
+    for (const x of partsFmt.formatToParts(new Date())) p[x.type] = x.value;
+    return p;
+  }
+  function wetBulb(T, RH) {   // Stull (2011)
+    return T * Math.atan(0.151977 * Math.sqrt(RH + 8.313659)) + Math.atan(T + RH) - Math.atan(RH - 1.676331)
+      + 0.00391838 * Math.pow(RH, 1.5) * Math.atan(0.023101 * RH) - 4.686035;
+  }
+  const CATS = [[27, 0, 'Low', '#22c55e'], [29, 1, 'Moderate', '#eab308'], [31, 2, 'High', '#f59e0b'], [33, 3, 'Very high', '#f97316'], [Infinity, 4, 'Extreme', '#ef4444']];
+  const POLICY = [   // [max WBGT, acclimatized L/M/H, unacclimatized L/M/H] as [work, rest] minutes per hour
+    [28, [[60, 0], [60, 0], [45, 15]], [[60, 0], [45, 15], [30, 30]]],
+    [30, [[60, 0], [45, 15], [30, 30]], [[45, 15], [30, 30], [15, 45]]],
+    [32, [[45, 15], [30, 30], [15, 45]], [[30, 30], [15, 45], [0, 60]]],
+    [34, [[30, 30], [15, 45], [10, 50]], [[15, 45], [0, 60], [0, 60]]],
+    [Infinity, [[15, 45], [0, 60], [0, 60]], [[0, 60], [0, 60], [0, 60]]],
+  ];
+  function policyFor(wbgt) {
+    const row = POLICY.find(r => wbgt < r[0]);
+    const mk = a => ({ light: { work: a[0][0], rest: a[0][1] }, moderate: { work: a[1][0], rest: a[1][1] }, heavy: { work: a[2][0], rest: a[2][1] } });
+    return { acclimatized: mk(row[1]), unacclimatized: mk(row[2]) };
+  }
+  function recomputeSite() {
+    const src = override
+      ? { temp_c: override.temp_c, rh: override.rh, wind_ms: 1.4, solar_wm2: override.sun ? 880 : 0 }
+      : { temp_c: base.temp_c + (R() - 0.5) * 0.4, rh: base.rh + (R() - 0.5) * 2, wind_ms: base.wind_ms + (R() - 0.5) * 0.6, solar_wm2: base.solar_wm2 + (R() - 0.5) * 30 };
+    const T = src.temp_c, RH = clamp(src.rh, 1, 100);
+    const tg = T + (src.solar_wm2 * 0.012) / (1 + 0.3 * src.wind_ms);
+    const wbgt = 0.7 * wetBulb(T, RH) + 0.2 * tg + 0.1 * T;
+    const e = (RH / 100) * 6.105 * Math.exp((17.27 * T) / (237.7 + T));
+    const cat = CATS.find(c => wbgt < c[0]);
+    const p = dubaiParts();
+    const mins = Number(p.hour) * 60 + Number(p.minute);
+    const md = Number(p.month) * 100 + Number(p.day);
+    const inSeason = md >= 615 && md <= 915;
+    site = {
+      name: 'Dubai — Site 7 (mock)', lat: 25.2, lon: 55.27,
+      temp_c: r1(T), rh: Math.round(RH), wind_ms: r1(src.wind_ms), solar_wm2: Math.round(src.solar_wm2),
+      apparent_c: r1(T + 0.33 * e - 0.7 * src.wind_ms - 4),
+      source: override ? 'override' : 'open-meteo',
+      wbgt_c: r1(wbgt),
+      category: { level: cat[1], label: cat[2], color: cat[3] },
+      policy: policyFor(wbgt),
+      midday_break: { active: inSeason && mins >= 750 && mins < 900, in_season: inSeason, window: '12:30–15:00', season: '15 Jun – 15 Sep' },
+      local_time: `${p.hour}:${p.minute}`,
+      updated: nowS(),
+    };
+  }
+  recomputeSite();
+
+  /* ---------- live worker ---------- */
+  const worker = {
+    id: LIVE_ID, name: 'Ramesh Kumar', trade: 'Steel fixer', zone: 'Block C', crew: 'C-3',
+    live: true, acclimatized: true, status: 'ok', risk: 0, workload: 'moderate',
+    phase: 'work', phase_reason: 'Within heat budget',
+    work_elapsed_min: 23.2, work_budget_min: 30, rest_remaining_min: 0, rest_required_min: 30,
+    shift_exposure_min: 184, device_temp_c: 43.2, battery: 82,
+    last_event: 'fall_ok', open_alerts: 0, updated: nowS(),
+    motion: { am: 1, gm: 3, act: 0.04, trem_hz: 0, trem_amp: 0, still_s: 0 },
+  };
+  function liveOpenAlerts() {
+    return Array.from(alerts.values()).filter(a => a.worker_id === LIVE_ID && (a.state === 'open' || a.state === 'acknowledged'));
+  }
+  function stepWorker(dtReal) {
+    const dt = (dtReal * config.timewarp) / 60;   // simulated minutes
+    const pol = site.policy[worker.acclimatized ? 'acclimatized' : 'unacclimatized'][worker.workload] || { work: 30, rest: 30 };
+    worker.work_budget_min = pol.work;
+    if (worker.phase === 'work') {
+      if (pol.work === 0) {
+        worker.phase = 'stop';
+        worker.phase_reason = `WBGT ${site.wbgt_c} °C: no ${worker.workload} work permitted`;
+      } else {
+        worker.work_elapsed_min += dt;
+        worker.shift_exposure_min += dt;
+        if (worker.work_elapsed_min >= pol.work) {
+          worker.work_elapsed_min = pol.work;
+          worker.phase = 'rest';
+          worker.phase_reason = 'Heat limit reached';
+          worker.rest_required_min = pol.rest || 15;
+          worker.rest_remaining_min = worker.rest_required_min;
+          addAlert({ worker_id: LIVE_ID, worker_name: worker.name, live: true, simulated: false, source: 'server',
+            type: 'heat_limit', severity: 'warning', title: 'Heat limit reached',
+            message: `Worked ${pol.work} min at WBGT ${site.wbgt_c} °C. Cool-down of ${worker.rest_required_min} min sent to the wearable.` });
+        } else {
+          worker.phase_reason = worker.work_elapsed_min >= pol.work * 0.8 ? 'Approaching heat limit' : 'Within heat budget';
+        }
+      }
+    } else if (worker.phase === 'rest') {
+      worker.rest_remaining_min = Math.max(0, worker.rest_remaining_min - dt);
+      if (worker.rest_remaining_min <= 0) {
+        worker.phase = 'work';
+        worker.work_elapsed_min = 0;
+        worker.phase_reason = 'Cool-down complete';
+      }
+    } else if (worker.phase === 'stop' && pol.work > 0) {
+      worker.phase = 'work';
+      worker.phase_reason = 'Conditions eased';
+    }
+    const open = liveOpenAlerts();
+    worker.open_alerts = open.length;
+    const ratio = pol.work > 0 ? worker.work_elapsed_min / pol.work : 1;
+    if (open.some(a => a.severity === 'critical')) worker.status = 'alert';
+    else if (worker.phase !== 'work') worker.status = 'rest';
+    else if (ratio >= 0.8) worker.status = 'caution';
+    else worker.status = 'ok';
+    worker.risk = clamp(Math.round((site.wbgt_c - 24) * 6 + (worker.phase === 'work' ? ratio * 35 : 0) + (worker.status === 'alert' ? 25 : 0)), 0, 100);
+    worker.device_temp_c = r1(36 + site.wbgt_c * 0.25 + (R() - 0.5) * 0.4);
+    worker.battery = Math.max(5, worker.battery - 0.01);
+    worker.updated = nowS();
+  }
+
+  /* ---------- IMU generator ---------- */
+  const UPRIGHT = [0.05, 0.12, 0.99];
+  function gen(mode, tt, T, st) {
+    const n = k => (R() + R() + R() - 1.5) * k;
+    const [ox, oy, oz] = st.orient;
+    let ax = ox, ay = oy, az = oz, gx = 0, gy = 0, gz = 0;
+    const w = 2 * Math.PI * 1.8 * T;
+    const walk = () => {
+      ax += 0.10 * Math.sin(w / 2) + n(0.03); ay += 0.07 * Math.sin(w + 1) + n(0.03);
+      az += 0.24 * Math.sin(w) + 0.08 * Math.sin(2 * w + 0.5) + n(0.03);
+      gx = 38 * Math.sin(w / 2) + n(6); gy = 22 * Math.sin(w + 0.7) + n(5); gz = 14 * Math.sin(w / 2 + 2) + n(4);
+    };
+    if (mode === 'walk') walk();
+    else if (mode === 'still') { ax += n(0.006); ay += n(0.006); az += n(0.006); gx = n(0.8); gy = n(0.8); gz = n(0.8); }
+    else if (mode === 'tremor') {
+      const f = 2 * Math.PI * 7.4 * T;
+      ax += 0.13 * Math.sin(f) + n(0.01); ay += 0.09 * Math.sin(f + 1.3) + n(0.01); az += n(0.01);
+      gx = 42 * Math.sin(f + 0.4) + n(3); gy = 30 * Math.sin(f + 2) + n(3); gz = n(3);
+    } else if (mode === 'erratic') {
+      ax += 0.7 * Math.sin(2 * Math.PI * 2.7 * T) * Math.sin(2 * Math.PI * 0.9 * T) + n(0.25);
+      ay += 0.55 * Math.sin(2 * Math.PI * 3.3 * T + 1) + n(0.25); az += 0.5 * Math.sin(2 * Math.PI * 1.7 * T + 2) + n(0.25);
+      gx = 160 * Math.sin(2 * Math.PI * 2.1 * T) + n(40); gy = 120 * Math.sin(2 * Math.PI * 3.1 * T + 1) + n(40); gz = 90 * Math.sin(2 * Math.PI * 1.3 * T) + n(30);
+    } else if (mode === 'fall') {
+      if (tt < 0.5) walk();
+      else if (tt < 0.8) {
+        const k = (tt - 0.5) / 0.3;
+        ax = ox * 0.12 + n(0.02); ay = oy * 0.12 + n(0.02); az = oz * 0.12 + n(0.02);
+        gx = 260 * k + n(20); gy = -140 * k + n(20); gz = 90 * k + n(15);
+      } else if (tt < 0.95) {
+        const p = Math.exp(-Math.pow((tt - 0.84) / 0.03, 2));
+        ax = 0.97 + 1.9 * p + n(0.1); ay = 0.15 - 1.6 * p + n(0.1); az = 0.12 + 2.1 * p + n(0.1);
+        gx = 380 * p + n(20); gy = -260 * p + n(20); gz = 150 * p + n(15);
+        st.orient = [0.97, 0.15, 0.12];
+      } else {
+        const d = Math.exp(-(tt - 0.95) * 6);
+        ax = 0.97 + 0.15 * d * Math.sin(tt * 40) + n(0.01); ay = 0.15 + n(0.01); az = 0.12 + n(0.01);
+        gx = 40 * d * Math.sin(tt * 30) + n(1); gy = n(1); gz = n(1);
+        st.orient = [0.97, 0.15, 0.12];
+      }
+    }
+    return [ax, ay, az, gx, gy, gz];
+  }
+  const SCRIPT = [['walk', 8], ['fall', 3], ['still', 6], ['walk', 14], ['tremor', 8], ['walk', 12], ['erratic', 5], ['walk', 16], ['still', 7]];
+  const imu = { seg: 0, segT: 0, T: 0, devT: 50000, st: { orient: UPRIGHT.slice() }, amHist: [], gmHist: [], still: 0, lastFall: 0 };
+  function onSegmentEnd(mode) {
+    const t = nowS();
+    if (mode === 'fall' && t - imu.lastFall > 50) {
+      imu.lastFall = t;
+      worker.last_event = 'fall';
+      const a = addAlert({ worker_id: LIVE_ID, worker_name: worker.name, live: true, simulated: false, source: 'device',
+        type: 'fall', severity: 'critical', title: 'Fall detected', has_window: true,
+        message: 'Free-fall 300 ms, impact 3.9 g, no movement after.' });
+      setTimeout(() => notifyAlert(a), 1200);
+    } else if (mode === 'tremor') {
+      worker.last_event = 'tremor';
+      addAlert({ worker_id: LIVE_ID, worker_name: worker.name, live: true, simulated: false, source: 'device',
+        type: 'tremor', severity: 'warning', title: 'Tremor detected', has_window: true,
+        message: '7.4 Hz tremor, amplitude 0.13 g, sustained for 6 s while standing still.' });
+    } else if (mode === 'erratic') {
+      worker.last_event = 'erratic';
+      addAlert({ worker_id: LIVE_ID, worker_name: worker.name, live: true, simulated: false, source: 'device',
+        type: 'erratic', severity: 'warning', title: 'Erratic movement', has_window: true,
+        message: 'Irregular high-energy motion for 5 s. Possible stumbling or loss of balance.' });
+    }
+  }
+  function imuTick() {
+    const rows = [];
+    for (let k = 0; k < 5; k++) {
+      const [mode, dur] = SCRIPT[imu.seg];
+      if (imu.segT >= dur) {
+        onSegmentEnd(mode);
+        imu.seg = (imu.seg + 1) % SCRIPT.length;
+        imu.segT = 0;
+        if (SCRIPT[imu.seg][0] === 'walk') imu.st.orient = UPRIGHT.slice();
+      }
+      const s = gen(SCRIPT[imu.seg][0], imu.segT, imu.T, imu.st);
+      imu.devT += 20; imu.segT += 0.02; imu.T += 0.02;
+      rows.push([imu.devT, ...s.map(r3)]);
+      imu.amHist.push(Math.hypot(s[0], s[1], s[2]));
+      imu.gmHist.push(Math.hypot(s[3], s[4], s[5]));
+    }
+    if (imu.amHist.length > 50) { imu.amHist.splice(0, imu.amHist.length - 50); imu.gmHist.splice(0, imu.gmHist.length - 50); }
+    const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+    const am = mean(imu.amHist);
+    const act = Math.sqrt(mean(imu.amHist.map(v => (v - am) * (v - am))));
+    imu.still = act < 0.02 ? imu.still + 0.1 : 0;
+    const mode = SCRIPT[imu.seg][0];
+    worker.motion = { am: r3(am), gm: r1(mean(imu.gmHist)), act: r3(act),
+      trem_hz: mode === 'tremor' && imu.segT > 1.5 ? 7.4 : 0, trem_amp: mode === 'tremor' && imu.segT > 1.5 ? 0.13 : 0,
+      still_s: Math.floor(imu.still) };
+    emit('imu', { id: LIVE_ID, samples: rows });
+  }
+
+  /* ---------- fleet ---------- */
+  const tiles = new Array(N).fill('o').map(() => { const r = R(); return r < 0.04 ? 'c' : r < 0.08 ? 'r' : r < 0.087 ? 'x' : 'o'; });
+  const alertTiles = new Map();   // tile index -> alert id
+  const FIRST = ['Ramesh', 'Suresh', 'Mohammed', 'Imran', 'Rajesh', 'Anil', 'Arjun', 'Bilal', 'Farhan', 'Joseph', 'Sanjay', 'Deepak', 'Ravi', 'Kamal', 'Nabil', 'Tariq', 'Vijay', 'Manoj', 'Prakash', 'Sunil', 'Abdul', 'Hassan', 'Karim', 'Shahid', 'Jose', 'Rohan', 'Amit', 'Dinesh', 'Gopal', 'Yusuf'];
+  const LAST = ['Kumar', 'Singh', 'Khan', 'Ali', 'Das', 'Nair', 'Sharma', 'Ahmed', 'Hussain', 'Rahman', 'Thapa', 'Gurung', 'Pillai', 'Reddy', 'Iqbal', 'Perera', 'Fernando', 'Varghese', 'Menon', 'Bhandari'];
+  const TRADES = ['Steel fixer', 'Mason', 'Carpenter', 'Scaffolder', 'Labourer', 'Welder', 'Electrician', 'Plumber', 'Painter', 'Banksman', 'Surveyor', 'Plant operator'];
+  const ZONES = ['Block A', 'Block B', 'Block C', 'Block D', 'Podium', 'Car park', 'Facade east', 'Roof deck'];
+  const tileIndex = id => { const m = /^W-(\d+)$/.exec(id || ''); const i = m ? Number(m[1]) - 1 : -1; return i >= 0 && i < N ? i : -1; };
+  const wid = i => `W-${String(i + 1).padStart(4, '0')}`;
+  function seeded(n) {
+    let a = (n * 2654435761) >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function identity(i) {
+    const r = seeded(i + 1);
+    const pk = a => a[Math.floor(r() * a.length)];
+    return { r, name: `${pk(FIRST)} ${pk(LAST)}`, trade: pk(TRADES), zone: pk(ZONES), crew: `${pk(['A', 'B', 'C', 'D', 'E'])}-${1 + Math.floor(r() * 8)}`,
+      acclimatized: r() > 0.18, workload: pk(['light', 'moderate', 'moderate', 'heavy']) };
+  }
+  function fleetWorker(id) {
+    const i = tileIndex(id);
+    if (i < 0) throw httpError(404, `Worker ${id} not found`);
+    const p = identity(i), r = p.r;
+    const st = TILE[tiles[i]];
+    const pol = site.policy[p.acclimatized ? 'acclimatized' : 'unacclimatized'][p.workload];
+    let phase = 'work', reason = 'Within heat budget', el = r() * pol.work * 0.75, rem = 0;
+    if (pol.work === 0) { phase = 'stop'; reason = `WBGT ${site.wbgt_c} °C: no ${p.workload} work for ${p.acclimatized ? '' : 'un'}acclimatized workers`; el = 0; }
+    if (st === 'caution') { el = pol.work * (0.82 + r() * 0.16); reason = 'Approaching heat limit'; }
+    if (st === 'rest') { phase = 'rest'; rem = Math.max(1, r() * (pol.rest || 15)); reason = 'Heat limit reached'; el = pol.work; }
+    const open = Array.from(alerts.values()).filter(a => a.worker_id === id && (a.state === 'open' || a.state === 'acknowledged'));
+    if (st === 'alert' && open[0]) reason = open[0].title;
+    if (st === 'offline') reason = 'No data from the wearable';
+    return {
+      id, name: p.name, trade: p.trade, zone: p.zone, crew: p.crew, live: false, acclimatized: p.acclimatized,
+      status: st, risk: clamp(Math.round((site.wbgt_c - 24) * 5 + (st === 'alert' ? 40 : st === 'caution' ? 20 : 0) + r() * 10), 0, 100),
+      workload: p.workload, phase, phase_reason: reason,
+      work_elapsed_min: r1(el), work_budget_min: pol.work, rest_remaining_min: r1(rem), rest_required_min: pol.rest || 15,
+      shift_exposure_min: r1(60 + r() * 200), device_temp_c: r1(36 + site.wbgt_c * 0.25 + r() * 2), battery: Math.round(20 + r() * 80),
+      last_event: open[0] ? open[0].type : pick([null, null, 'fall_ok', 'inactivity_ok']), open_alerts: open.length,
+      updated: st === 'offline' ? nowS() - 300 - r() * 400 : nowS() - r() * 2,
+    };
+  }
+  function stepFleet() {
+    for (let i = 0; i < N; i++) {
+      const c = tiles[i], r = R();
+      if (c === 'a') { if (!alertTiles.has(i)) tiles[i] = 'r'; continue; }
+      if (c === 'o') { if (r < 0.004) tiles[i] = 'c'; else if (r < 0.0045) tiles[i] = 'x'; }
+      else if (c === 'c') { if (r < 0.06) tiles[i] = 'r'; else if (r < 0.1) tiles[i] = 'o'; }
+      else if (c === 'r') { if (r < 0.05) tiles[i] = 'o'; }
+      else if (c === 'x') { if (r < 0.05) tiles[i] = 'o'; }
+    }
+  }
+  function fleetObj() {
+    const counts = { ok: 0, caution: 0, rest: 0, alert: 0, offline: 0, total: N };
+    for (const ch of tiles) counts[TILE[ch]]++;
+    return { counts, tiles: tiles.join(''), ids_prefix: 'W-', id_width: 4 };
+  }
+
+  /* ---------- alerts ---------- */
+  const alerts = new Map();
+  let seq = 117;
+  function addAlert(p, quiet) {
+    const a = Object.assign({ id: `A-${String(seq++).padStart(6, '0')}`, live: false, simulated: true, severity: 'warning',
+      ts: nowS(), state: 'open', source: 'server', has_window: false, devin: null, notified: [] }, p);
+    alerts.set(a.id, a);
+    if (a.simulated && (a.state === 'open' || a.state === 'acknowledged')) {
+      const i = tileIndex(a.worker_id);
+      if (i >= 0) { tiles[i] = 'a'; alertTiles.set(i, a.id); }
+    }
+    if (!quiet) emit('alert', a);
+    return a;
+  }
+  function closeAlert(a, state) {
+    a.state = state;
+    const i = tileIndex(a.worker_id);
+    if (i >= 0 && alertTiles.get(i) === a.id) { alertTiles.delete(i); tiles[i] = state === 'false_alarm' ? 'o' : 'r'; }
+    emit('alert', a);
+  }
+  const SIM_TYPES = [
+    ['heat_limit', 4, 'warning', 'Heat limit reached', () => `Worked the full heat budget at WBGT ${site.wbgt_c} °C. Cool-down started.`, false],
+    ['rest_violation', 2, 'warning', 'Rest violation', () => 'Work-level movement during a mandated cool-down.', false],
+    ['inactivity', 2, 'warning', 'No movement', () => 'No movement for 4 min 10 s. No response to the wrist prompt yet.', true],
+    ['erratic', 1, 'warning', 'Erratic movement', () => 'Irregular high-energy motion for 6 s. Possible stumbling.', true],
+    ['fall', 1.2, 'critical', 'Fall detected', () => `Free-fall ${180 + Math.round(R() * 150)} ms, impact ${(2.4 + R() * 1.6).toFixed(1)} g, no movement after.`, true],
+    ['sos', 0.4, 'critical', 'SOS pressed', () => 'Worker held the SOS button for 3 s.', false],
+    ['unwell', 0.8, 'warning', 'Reported unwell', () => 'Worker selected "I feel unwell" on the wrist display.', false],
+    ['offline', 1, 'info', 'Wearable offline', () => 'No data for 5 min.', false],
+    ['heat_critical', 0.6, 'critical', 'Heat critical', () => `WBGT ${site.wbgt_c} °C: heavy work not permitted for this unacclimatized worker.`, false],
+  ];
+  function addSimAlert(tsOffset) {
+    const total = SIM_TYPES.reduce((s, t) => s + t[1], 0);
+    let r = R() * total, t = SIM_TYPES[0];
+    for (const x of SIM_TYPES) { r -= x[1]; if (r <= 0) { t = x; break; } }
+    let i;
+    do { i = Math.floor(R() * N); } while (alertTiles.has(i));
+    const id = wid(i);
+    return addAlert({ worker_id: id, worker_name: identity(i).name, type: t[0], severity: t[2], title: t[3], message: t[4](),
+      has_window: t[5], ts: nowS() - (tsOffset || 0) });
+  }
+
+  /* ---------- Devin analysis ---------- */
+  function devinResult(a) {
+    const T = a.type;
+    if (T === 'fall' && (a.live || R() < 0.6)) return {
+      verdict: 'true_fall', confidence: 0.86,
+      summary: 'Free-fall of about 300 ms, then a 3.9 g impact and more than 5 s of stillness lying down. This matches a fall from standing height, not a dropped device.',
+      evidence: ['|a| stayed below 0.5 g for 300 ms (free-fall window)', 'Impact peak 3.9 g about 40 ms after free-fall ended',
+        'Gravity vector rotated about 80° and stayed there, so the worker is lying down', 'No step pattern in the 5 s after impact'],
+      recommended_actions: ['Send the nearest first-aider to the worker now', 'Call the worker. If there is no answer, escalate to the site medic',
+        'Keep the worker out of the heat until assessed'],
+      suggested_threshold_changes: [] };
+    if (T === 'fall') return {
+      verdict: 'false_alarm', confidence: 0.74,
+      summary: 'Impact without a real free-fall phase. The wrist-slap pattern repeats every 0.6 s, typical of hammering or tying rebar.',
+      evidence: ['No |a| dip below 0.5 g before the impact', 'Five similar 1.9 to 2.1 g spikes in 3 s', 'Orientation unchanged after the event'],
+      recommended_actions: ['Mark as false alarm', 'Raise the impact threshold for steel-fixing crews'],
+      suggested_threshold_changes: [
+        { parameter: 'FALL_IMPACT_G', current: 1.8, proposed: 2.2, rationale: 'Tool strikes on this crew peak at 1.9 to 2.1 g. Logged real falls exceed 2.8 g.' },
+        { parameter: 'FALL_FREEFALL_MS', current: 80, proposed: 120, rationale: 'Require a longer free-fall before an impact counts as a fall.' }] };
+    if (T === 'tremor') return {
+      verdict: 'tremor_or_seizure_like', confidence: 0.69,
+      summary: 'Sustained 7.4 Hz oscillation while otherwise still. Heat exhaustion can cause shaking; a seizure cannot be ruled out from motion alone.',
+      evidence: ['Dominant frequency 7.4 Hz, steady for 6 s', 'Amplitude 0.13 g, too regular for voluntary movement', 'WBGT in the very-high band for the last 40 min'],
+      recommended_actions: ['Check on the worker in person within 5 minutes', 'Move to shade, give water, measure body temperature'],
+      suggested_threshold_changes: [{ parameter: 'TREMOR_MIN_S', current: 3, proposed: 4, rationale: 'Short 3 s bursts from power tools cause most tremor alerts on this site.' }] };
+    if (T === 'erratic') return {
+      verdict: 'erratic_movement', confidence: 0.63,
+      summary: 'High-energy, irregular motion across all axes for 5 s without a fall. Consistent with stumbling or disorientation.',
+      evidence: ['Gyro peaks above 200 deg/s on all axes', 'No periodic gait pattern', 'Worker returned to a normal walk afterwards'],
+      recommended_actions: ['Ask the crew lead to check the worker', 'Watch for repeat episodes in the next 30 minutes'],
+      suggested_threshold_changes: [] };
+    if (['heat_limit', 'heat_critical', 'rest_violation', 'unwell'].includes(T)) return {
+      verdict: 'heat_illness_risk', confidence: 0.78,
+      summary: `Heat exposure is above the ACGIH screening limit at WBGT ${site.wbgt_c} °C. The worker needs a full cool-down before more work.`,
+      evidence: [`WBGT ${site.wbgt_c} °C (${site.category.label})`, 'Work time reached the hourly limit for this workload', 'Device temperature rising over the last 20 min'],
+      recommended_actions: ['Enforce the cool-down in a shaded rest area', 'Give water and electrolytes', 'Reassign to light work for the rest of the hour'],
+      suggested_threshold_changes: [] };
+    return {
+      verdict: 'needs_human_review', confidence: 0.52,
+      summary: 'Sensor data alone is not enough to decide. A supervisor should check on the worker.',
+      evidence: ['Signal lost or motionless without a preceding impact', 'No SOS or unwell report'],
+      recommended_actions: ['Radio the crew lead to locate the worker'],
+      suggested_threshold_changes: [] };
+  }
+  function startDevin(a) {
+    const engine = config.devin_configured ? 'devin' : 'local';
+    const sid = Math.random().toString(16).slice(2, 10);
+    a.devin = { status: 'queued', engine, session_id: engine === 'devin' ? `devin-mock-${sid}` : null,
+      url: engine === 'devin' ? `https://app.devin.ai/sessions/mock-${sid}` : null,
+      verdict: null, confidence: null, summary: null, evidence: [], recommended_actions: [], suggested_threshold_changes: [], error: null };
+    emit('alert', a);
+    setTimeout(() => { if (a.devin) { a.devin.status = 'running'; emit('alert', a); } }, engine === 'devin' ? 1500 : 400);
+    setTimeout(() => { if (a.devin) { Object.assign(a.devin, devinResult(a), { status: 'done' }); emit('alert', a); } }, engine === 'devin' ? 7000 : 1800);
+  }
+
+  /* ---------- WhatsApp escalation ---------- */
+  const notifications = new Map();
+  let nseq = 1;
+  function notifyAlert(a, quiet) {
+    const idx = tileIndex(a.worker_id);
+    const who = a.worker_id === LIVE_ID ? worker : (idx >= 0 ? identity(idx) : { name: a.worker_name });
+    const label = `${who.zone || 'Site 7'}${who.crew ? ', crew ' + who.crew : ''}`;
+    const loc = { lat: site.lat, lon: site.lon, label, maps_url: `https://maps.google.com/?q=${site.lat},${site.lon}` };
+    const text = [
+      `HeatGuard ${a.severity === 'critical' ? 'URGENT' : 'alert'}: ${a.title}`,
+      `Worker: ${a.worker_name || a.worker_id} (${a.worker_id})${who.trade ? ', ' + who.trade : ''}`,
+      a.message || '',
+      `Site: ${site.name}, WBGT ${site.wbgt_c} °C (${site.category.label})`,
+      `Location: ${label} ${loc.maps_url}`,
+      `Time: ${clockOf(a.ts)} GST · Alert ${a.id}`,
+    ].filter(Boolean).join('\n');
+    const out = RECIPIENTS.map((to, k) => {
+      const failed = waProvider !== 'dryrun' && R() < 0.1;
+      const n = { id: `N-${String(nseq++).padStart(6, '0')}`, channel: 'whatsapp', provider: waProvider, to,
+        status: waProvider === 'dryrun' ? 'dry_run' : failed ? 'failed' : 'sent', alert_id: a.id, text, location: loc,
+        ts: (quiet ? a.ts + 3 : nowS()) + k * 0.2, error: failed ? 'Provider timeout after 10 s' : null, provider_id: null };
+      notifications.set(n.id, n);
+      a.notified = (a.notified || []).concat(n.id);
+      if (!quiet) emit('notify', n);
+      return n;
+    });
+    if (!quiet) emit('alert', a);
+    return out;
+  }
+
+  /* ---------- voice assistant ---------- */
+  const voice = new Map();
+  let vseq = 40;
+  function voiceEntry(turn, role, text, final, ts) {
+    const v = { id: `V-${turn}-${role}`, turn_id: turn, worker_id: LIVE_ID, worker_name: worker.name, role, text, final, ts };
+    voice.set(v.id, v);
+    return v;
+  }
+  function seedVoice() {
+    const t = nowS();
+    voiceEntry('T-0037', 'worker', 'How long until my break?', true, t - 610);
+    voiceEntry('T-0037', 'tool', 'get_heat_status()', true, t - 609);
+    voiceEntry('T-0037', 'assistant', 'You have about 7 minutes of work left, then a 30 minute cool-down in the shade. Drink some water now.', true, t - 608);
+    voiceEntry('T-0038', 'worker', 'كم درجة الحرارة الآن؟', true, t - 380);
+    voiceEntry('T-0038', 'tool', 'get_heat_status()', true, t - 379);
+    voiceEntry('T-0038', 'assistant', `مؤشر الحرارة ${site.wbgt_c} درجة، وهو مرتفع جداً. خذ استراحة في الظل بعد سبع دقائق واشرب الماء.`, true, t - 378);
+    voiceEntry('T-0039', 'worker', 'مجھے چکر آ رہے ہیں', true, t - 150);
+    voiceEntry('T-0039', 'tool', 'request_help(reason=dizzy)', true, t - 149);
+    voiceEntry('T-0039', 'assistant', 'Help is on the way. Sit down in the shade, loosen your helmet and drink water. Your supervisor has been alerted.', true, t - 147);
+  }
+  const SCRIPTED_TURNS = [
+    ['Can I take my break now? I feel very hot.', 'start_cool_down(minutes=15)', 'Yes. I have started a 15 minute cool-down. Go to the shaded rest area and drink water.'],
+    ['What is the heat level right now?', 'get_heat_status()', () => `WBGT is ${site.wbgt_c} degrees, ${site.category.label.toLowerCase()}. Work ${site.policy.acclimatized.moderate.work} minutes, then rest ${site.policy.acclimatized.moderate.rest} minutes each hour.`],
+    ['मेरा सिर दर्द कर रहा है', 'report_symptoms(symptoms=headache, severity=moderate)', 'I have told your supervisor and started a cool-down. Rest in the shade and drink water slowly.'],
+  ];
+  let scriptedIdx = 0;
+  function voiceTurn() {
+    if (!withLive || !config.assistant.enabled) return;
+    const [q, tool, ans] = SCRIPTED_TURNS[scriptedIdx++ % SCRIPTED_TURNS.length];
+    const turn = `T-${String(vseq++).padStart(4, '0')}`;
+    const t0 = nowS();
+    emit('voice', voiceEntry(turn, 'worker', q, true, t0));
+    setTimeout(() => emit('voice', voiceEntry(turn, 'tool', tool, true, t0 + 1)), 900);
+    const full = typeof ans === 'function' ? ans() : ans;
+    const words = full.split(' ');
+    let k = 0;
+    const iv = setInterval(() => {
+      k = Math.min(words.length, k + 2);
+      emit('voice', voiceEntry(turn, 'assistant', words.slice(0, k).join(' '), k >= words.length, t0 + 1.5));
+      if (k >= words.length) clearInterval(iv);
+    }, 140);
+  }
+
+  /* ---------- initial data ---------- */
+  (function seed() {
+    const t = nowS();
+    if (withLive) {
+      const a = addAlert({ worker_id: LIVE_ID, worker_name: worker.name, live: true, simulated: false, source: 'device',
+        type: 'fall', severity: 'critical', title: 'Fall detected', has_window: true, state: 'false_alarm', ts: t - 1260,
+        message: 'Free-fall 60 ms, impact 2.1 g. Worker pressed OK within 8 s.' }, true);
+      a.devin = Object.assign({ status: 'done', engine: config.devin_configured ? 'devin' : 'local',
+        session_id: 'devin-mock-4f2a91', url: config.devin_configured ? 'https://app.devin.ai/sessions/mock-4f2a91' : null, error: null },
+        devinResult({ type: 'fall', live: false }));
+      a.devin.verdict = 'false_alarm';
+      a.devin.summary = 'Impact without a real free-fall phase, and the worker confirmed OK. Pattern matches striking rebar ties, not a fall.';
+      const h = addAlert({ worker_id: LIVE_ID, worker_name: worker.name, live: true, simulated: false, source: 'server',
+        type: 'unwell', severity: 'critical', title: 'Worker requested help', ts: t - 148, state: 'acknowledged',
+        message: 'Voice assistant: worker reported dizziness (request_help, reason: dizzy).' }, true);
+      notifyAlert(h, true);
+      seedVoice();
+    }
+    addAlert({ ...simBase(417), type: 'heat_limit', title: 'Heat limit reached', state: 'acknowledged', ts: t - 420,
+      message: `Worked the full heat budget at WBGT ${site.wbgt_c} °C. Cool-down started.` }, true);
+    addAlert({ ...simBase(82), type: 'inactivity', title: 'No movement', ts: t - 190, has_window: true,
+      message: 'No movement for 4 min 10 s. No response to the wrist prompt yet.' }, true);
+    const hc = addAlert({ ...simBase(764), type: 'heat_critical', severity: 'critical', title: 'Heat critical', ts: t - 75,
+      message: `WBGT ${site.wbgt_c} °C: heavy work not permitted for this unacclimatized worker.` }, true);
+    notifyAlert(hc, true);
+    const er = addAlert({ ...simBase(1033), type: 'erratic', title: 'Erratic movement', ts: t - 40, has_window: true,
+      message: 'Irregular high-energy motion for 6 s. Possible stumbling.' }, true);
+    er.devin = { status: 'running', engine: config.devin_configured ? 'devin' : 'local', session_id: 'devin-mock-9c1e07',
+      url: config.devin_configured ? 'https://app.devin.ai/sessions/mock-9c1e07' : null };
+    setTimeout(() => { Object.assign(er.devin, devinResult(er), { status: 'done', error: null }); emit('alert', er); }, 8000);
+  })();
+  function simBase(n) { return { worker_id: wid(n - 1), worker_name: identity(n - 1).name, simulated: true, live: false, severity: 'warning' }; }
+
+  function simTick() {
+    const t = nowS();
+    for (const a of alerts.values()) {
+      if (a.simulated && (a.state === 'open' || a.state === 'acknowledged') && t - a.ts > 180) closeAlert(a, 'resolved');
+    }
+    if (config.sim_events && R() < 1 / 16) {
+      const a = addSimAlert();
+      if (a.severity === 'critical') setTimeout(() => notifyAlert(a), 900);
+    }
+  }
+
+  /* ---------- request router ---------- */
+  function sortedAlerts(limit) {
+    return Array.from(alerts.values()).sort((a, b) => b.ts - a.ts).slice(0, limit || 100);
+  }
+  function windowFor(a) {
+    const mode = a.type === 'fall' ? 'fall' : a.type === 'tremor' ? 'tremor' : a.type === 'erratic' ? 'erratic' : a.type === 'inactivity' ? 'still' : 'walk';
+    const st = { orient: UPRIGHT.slice() };
+    const t0 = 200000, samples = [];
+    for (let k = 0; k < 500; k++) {
+      const s = k * 0.02;
+      let m = mode, tt = s;
+      if (mode === 'fall') { if (s < 4.3) m = 'walk'; else tt = s - 4.3; }
+      else if (s < (mode === 'still' ? 3 : 3.5)) m = 'walk';
+      samples.push([t0 + k * 20, ...gen(m, tt, s, st).map(r3)]);
+    }
+    return { samples, event_t_ms: mode === 'fall' ? t0 + Math.round((4.3 + 0.84) * 1000) : t0 + 5000 };
+  }
+
+  async function request(method, path, body) {
+    await sleep(60 + R() * 140);
+    const p = path.split('?')[0];
+    let m;
+    if (method === 'GET' && p === '/state') {
+      return clone({ site, live: withLive ? [worker] : [], fleet: fleetObj(), alerts: sortedAlerts(100), config,
+        voice: Array.from(voice.values()).slice(-50), notifications: Array.from(notifications.values()).slice(-50) });
+    }
+    if (method === 'GET' && p === '/alerts') return clone(sortedAlerts(100));
+    if ((m = p.match(/^\/workers\/([^/]+)$/)) && method === 'GET') {
+      const id = decodeURIComponent(m[1]);
+      return clone(id === LIVE_ID && withLive ? worker : fleetWorker(id));
+    }
+    if ((m = p.match(/^\/workers\/([^/]+)\/command$/)) && method === 'POST') {
+      const id = decodeURIComponent(m[1]);
+      const cmd = body && body.cmd;
+      if (!['rest', 'resume', 'buzz', 'msg'].includes(cmd)) throw httpError(422, `Unknown command ${cmd}`);
+      if (id === LIVE_ID && withLive) {
+        if (cmd === 'rest') {
+          worker.phase = 'rest'; worker.rest_remaining_min = body.mins; worker.rest_required_min = body.mins;
+          worker.phase_reason = 'Supervisor cool-down';
+        } else if (cmd === 'resume') {
+          worker.phase = 'work'; worker.rest_remaining_min = 0; worker.phase_reason = 'Resumed by supervisor';
+          worker.work_elapsed_min = Math.min(worker.work_elapsed_min, worker.work_budget_min * 0.5);
+        }
+        stepWorker(0);
+        emit('worker', worker);
+      } else {
+        const i = tileIndex(id);
+        if (i < 0) throw httpError(404, `Worker ${id} not found`);
+        if (cmd === 'rest' && tiles[i] !== 'a') tiles[i] = 'r';
+      }
+      return { ok: true, queued: body };
+    }
+    if ((m = p.match(/^\/alerts\/([^/]+)\/(ack|resolve|false_alarm|devin|window|notify)$/))) {
+      const a = alerts.get(decodeURIComponent(m[1]));
+      if (!a) throw httpError(404, 'Alert not found');
+      const act = m[2];
+      if (act === 'window' && method === 'GET') {
+        if (!a.has_window) throw httpError(404, 'No sensor window stored for this alert');
+        return windowFor(a);
+      }
+      if (method !== 'POST') throw httpError(405, 'Method not allowed');
+      if (act === 'ack') { a.state = 'acknowledged'; emit('alert', a); }
+      else if (act === 'resolve') closeAlert(a, 'resolved');
+      else if (act === 'false_alarm') closeAlert(a, 'false_alarm');
+      else if (act === 'devin') startDevin(a);
+      else if (act === 'notify') return { ok: true, notifications: clone(notifyAlert(a)) };
+      if (a.worker_id === LIVE_ID) { stepWorker(0); emit('worker', worker); }
+      return clone(a);
+    }
+    if (p === '/site/override') {
+      if (method === 'POST') {
+        const tc = Number(body && body.temp_c), rh = Number(body && body.rh);
+        if (!(tc >= -10 && tc <= 60) || !(rh >= 0 && rh <= 100)) throw httpError(422, 'temp_c or rh out of range');
+        override = { temp_c: tc, rh, sun: !!body.sun };
+      } else if (method === 'DELETE') override = null;
+      else throw httpError(405, 'Method not allowed');
+      recomputeSite();
+      emit('site', site);
+      return clone(site);
+    }
+    if (p === '/demo' && method === 'POST') {
+      if (body && 'timewarp' in body) config.timewarp = [1, 30, 60].includes(Number(body.timewarp)) ? Number(body.timewarp) : 1;
+      if (body && 'sim_events' in body) config.sim_events = !!body.sim_events;
+      emit('config', config);
+      return clone(config);
+    }
+    throw httpError(404, `Not found: ${method} ${p}`);
+  }
+
+  /* ---------- fake SSE stream ---------- */
+  function openStream(dispatchFn, setState) {
+    emit = (name, data) => { if (!paused) dispatchFn(name, clone(data)); };
+    setState('live');
+    if (withLive) {
+      setInterval(imuTick, 100);
+      setInterval(() => { stepWorker(1); emit('worker', worker); }, 1000);
+      setTimeout(voiceTurn, 9000);
+      setInterval(voiceTurn, 45000);
+    }
+    setInterval(() => { stepFleet(); emit('fleet', fleetObj()); }, 2000);
+    setInterval(simTick, 1000);
+    setInterval(() => { recomputeSite(); emit('site', site); }, 30000);
+    if (qs.get('drop') === '1') {
+      setTimeout(() => {
+        paused = true;
+        setState('reconnecting');
+        setTimeout(() => { paused = false; setState('live'); }, 5000);
+      }, 10000);
+    }
+  }
+
+  return { request, openStream };
+}
+/* ######################## end of MOCK MODE ######################## */
+
+boot();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Keep local state and keys out of the build upload / image
+.venv/
+**/__pycache__/
+**/*.pyc
+.env
+**/.env
+.env.*
+!**/.env.example
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

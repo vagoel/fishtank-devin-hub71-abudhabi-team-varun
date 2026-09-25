@@ -978,13 +978,21 @@ class Core:
             return {"ok": True, "cool_down_minutes": mins}
         if name == "report_symptoms":
             sev = args.get("severity") or "moderate"
+            said = str(args.get("symptoms") or "?")
+            # heat symptoms are a heat-illness incident; anything else is "unwell"
+            heat = any(k in said.lower() for k in ("hot", "heat", "dizz", "faint", "confus", "sweat",
+                                                    "vomit", "nause", "cramp", "headache", "collapse"))
             a = self.new_alert(w, "unwell", "critical" if sev == "severe" else "warning", "Symptoms reported by voice",
-                               "Worker said: %s (severity: %s). Cool-down started." % (args.get("symptoms", "?"), sev),
+                               "Worker said: %s (severity: %s). Cool-down started." % (said, sev),
                                source="voice")
             self.cmd_rest(w, 30, "Reported symptoms")
             if sev == "severe":
                 self.escalate(a)
-            return {"ok": True, "alert_id": a["id"], "cool_down_minutes": 30, "supervisor_notified": True}
+            self.record_incident(a, w, itype="heat_stroke" if heat else "unwell", source="voice",
+                                 details={"symptoms": said, "severity_said": sev, "said_by": "worker",
+                                          "action": "30 min cool-down started, supervisor alerted"})
+            return {"ok": True, "alert_id": a["id"], "incident_id": a.get("incident_id"),
+                    "cool_down_minutes": 30, "supervisor_notified": True}
         if name == "request_help":
             a = self.new_alert(w, "sos", "critical", "Help requested by voice",
                                "Worker asked for help: %s" % args.get("reason", "no reason given"), source="voice")

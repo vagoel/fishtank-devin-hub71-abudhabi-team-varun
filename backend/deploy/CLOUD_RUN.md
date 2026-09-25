@@ -56,3 +56,16 @@ curl -s $URL/api/v1/state | head -c 300
 curl -s "$URL/v1/incidents?limit=3"
 ```
 Open `$URL/` for the dashboard and `$URL/admin` for the telemetry admin page.
+
+## After every deploy: move the wearables to the new revision
+
+A wearable keeps its WebSocket (or kept-alive HTTPS connection) on the revision it
+connected to, and Cloud Run keeps that old instance running while the connection is
+open, up to the 3600 s request timeout. Until it reconnects, its data still reaches
+Postgres but the new revision's live dashboard, alerts and voice don't see it.
+
+1. Delete the superseded revisions (images stay in Artifact Registry):
+   `gcloud run revisions list --service telemetry-backend --region asia-northeast1`
+   then `gcloud run revisions delete <old-revision> --region asia-northeast1 --quiet`.
+2. Power-cycle the band (side button) so it opens a fresh connection. It reconnects on
+   its own within a few seconds and shows up with `transport: ws` in `/api/v1/state`.

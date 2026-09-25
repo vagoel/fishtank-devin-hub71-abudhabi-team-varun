@@ -1,0 +1,9 @@
+import { useState } from 'react'
+import { Activity, FlaskConical, Pause, Play, RotateCcw, Thermometer, TriangleAlert, WifiOff, X } from 'lucide-react'
+
+export default function DemoControls({ dashboard, siteId }) {
+  const [open, setOpen] = useState(false)
+  const [target, setTarget] = useState(siteId || 'AD-02')
+  if (dashboard.mode !== 'demo') return null
+  return <div className="demo-console"><button className={`button demo-button ${open ? 'active' : ''}`} onClick={() => setOpen(!open)} aria-expanded={open}><FlaskConical size={15} />Demo scenarios</button>{open && <div className="demo-popover"><div className="popover-heading"><h3>Run a scenario</h3><button className="icon-button" onClick={() => setOpen(false)} aria-label="Close demo scenarios"><X size={16} /></button></div><p>Fictional events. Real interaction.</p><label className="field-label">Construction site<select value={target} onChange={event => setTarget(event.target.value)}>{dashboard.sites.map(site => <option value={site.id} key={site.id}>{site.name}</option>)}</select></label><div className="scenario-grid">{[['fall', 'Possible fall', TriangleAlert], ['temperature', 'Temperature rise', Thermometer], ['distress', 'Assistance request', Activity], ['offline', 'Toggle connectivity', WifiOff]].map(([type, label, Icon]) => <button disabled={dashboard.busy} key={type} onClick={() => dashboard.trigger(type, target)}><Icon size={17} /><span>{label}</span></button>)}</div><div className="demo-actions"><button disabled={dashboard.busy} onClick={() => dashboard.setPaused(!dashboard.paused)}>{dashboard.paused ? <Play size={13} /> : <Pause size={13} />}{dashboard.paused ? 'Resume polling' : 'Pause polling'}</button><button disabled={dashboard.busy} onClick={dashboard.reset}><RotateCcw size={13} />Reset demo</button></div></div>}</div>
+}

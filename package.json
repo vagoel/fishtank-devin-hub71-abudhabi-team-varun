@@ -12,6 +12,14 @@
     "setup:backend": "cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
   },
   "devDependencies": {
-    "concurrently": "^9.0.1"
+    "concurrently": "^9.0.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vite": "8.3.0"
+  },
+  "overrides": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vite": "8.3.0"
   }
 }

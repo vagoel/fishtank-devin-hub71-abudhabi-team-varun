@@ -254,6 +254,8 @@ def _on_frames(link: DeviceLink, svc, data: list) -> None:
             link.send({"cmd": "slow", "retry_ms": 1000})
             return
     core.on_frames(frames, transport="ws", addr=link)
+    from . import detect  # server-side falls: a backup to the wearable's own detection
+    detect.feed(link.ws.app, frames)
 
 
 async def close_all() -> None:

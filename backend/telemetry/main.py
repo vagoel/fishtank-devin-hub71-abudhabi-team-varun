@@ -8,6 +8,7 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, statu
 from fastapi.responses import FileResponse, JSONResponse
 
 import heatguard  # HeatGuard: dashboard, device WebSocket, incidents, voice, phone calls
+from heatguard import detect as heatguard_detect  # HeatGuard: server-side fall detection
 
 from .buffer import BufferStore
 from .config import settings
@@ -156,6 +157,7 @@ async def ingest_frames(payload: FramePayload = Frames, svc: TelemetryService = 
         raise _queue_full(exc) from exc
     # HeatGuard: HTTP devices show up live too (chart, fall traces, wrist temperature)
     heatguard.core.on_frames(frames, transport="http")
+    heatguard_detect.feed(app, frames)  # HeatGuard: server-side falls (backup, stored in background)
     return IngestResponse(accepted=n, queued_rows=svc.writer.pending_rows, frames=len(frames))
 
 
@@ -298,3 +300,4 @@ app.include_router(heatguard.router)
 app.include_router(heatguard.livecall.router)
 # Incidents API (heatguard.incident.v1, docs/heatguard/incidents.md), stored in `incidents`
 app.include_router(heatguard.incidents.router)
+app.include_router(heatguard_detect.router)  # HeatGuard: /v1/heatguard/status

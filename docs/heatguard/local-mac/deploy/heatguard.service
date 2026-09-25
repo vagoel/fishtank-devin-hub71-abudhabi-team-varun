@@ -1,0 +1,47 @@
+# HeatGuard gateway server on a Linux site gateway (e.g. a Raspberry Pi at the camp).
+#
+#   sudo useradd --system --home /opt/heatguard --shell /usr/sbin/nologin heatguard
+#   sudo cp -r . /opt/heatguard && sudo chown -R heatguard:heatguard /opt/heatguard
+#   sudo -u heatguard python3 -m venv /opt/heatguard/.venv
+#   sudo -u heatguard /opt/heatguard/.venv/bin/pip install fastapi uvicorn httpx pyserial websockets
+#   sudo install -d -m 750 -o root -g heatguard /etc/heatguard
+#   sudo install -m 640 -o root -g heatguard deploy/heatguard.env.example /etc/heatguard/heatguard.env
+#   sudoedit /etc/heatguard/heatguard.env
+#   sudo cp deploy/heatguard.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now heatguard
+#   journalctl -u heatguard -f
+#
+# Wearables reach it on UDP 47800 (telemetry) and TCP 47802 (voice); it broadcasts
+# a discovery beacon on UDP 47801 and serves the dashboard on HTTP 8000.
+
+[Unit]
+Description=HeatGuard site gateway (wearable telemetry, dashboard, escalation)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=heatguard
+Group=heatguard
+# USB serial fallback for a wearable plugged into the gateway
+SupplementaryGroups=dialout
+WorkingDirectory=/opt/heatguard
+EnvironmentFile=/etc/heatguard/heatguard.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash /opt/heatguard/scripts/run.sh
+Restart=always
+RestartSec=5
+
+# Hardening: the server needs the network and its own directory, nothing else.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

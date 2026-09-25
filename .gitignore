@@ -12,3 +12,26 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Env: never commit keys; only *.example files are tracked
+.env.*
+!.env.example
+!*.env.example
+*.env
+
+# Cloud credentials: never commit
+GCP.json
+*service-account*.json
+*-key.json
+gcp*.json
+
+# Python build / tool caches
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+
+# HeatGuard local artefacts
+.logs/
+backup/
+**/bin/cloudflared
+*.log

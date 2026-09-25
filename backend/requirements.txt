@@ -1,3 +1,7 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pydantic>=2.9.0
+# HeatGuard (see pyproject.toml)
+httpx>=0.27
+websockets>=15
+# HeatGuard LAN mode only (HEATGUARD_LAN=1, USB serial bridge): pip install pyserial>=3.5

@@ -7,6 +7,8 @@ from typing import Literal
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 
+from heatguard import incidents as heatguard_incidents  # HeatGuard: incidents API
+
 from .buffer import BufferStore
 from .config import settings
 from .db import create_pool
@@ -283,3 +285,8 @@ async def stats(svc: TelemetryService = Service):
             "max_batch_size": settings.max_batch_size,
         },
     }
+
+
+# -- HeatGuard ----------------------------------------------------------------------------
+# Incidents API (heatguard.incident.v1, docs/heatguard/incidents.md), stored in `incidents`.
+app.include_router(heatguard_incidents.router)

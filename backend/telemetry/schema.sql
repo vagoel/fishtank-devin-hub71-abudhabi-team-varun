@@ -44,6 +44,30 @@ create table if not exists devices (
     last_seen      timestamptz not null
 );
 
+-- HeatGuard incidents (heatguard.incident.v1, docs/heatguard/incidents.md): falls, heat
+-- stroke, SOS... Low volume, written directly by heatguard/incidents.py (not the COPY writer).
+create table if not exists incidents (
+    incident_id   text        primary key,
+    device_id     text        not null,
+    person        jsonb,
+    type          text        not null,
+    status        text        not null,
+    severity      text        not null,
+    occurred_at   timestamptz not null,
+    received_at   timestamptz not null default now(),
+    updated_at    timestamptz not null default now(),
+    location      jsonb,
+    details       jsonb,
+    source        text,
+    alert_id      text,
+    escalated     jsonb,
+    boot_id       text,
+    read_time_us  bigint
+);
+
+create index if not exists incidents_occurred_idx on incidents (occurred_at desc);
+create index if not exists incidents_device_occurred_idx on incidents (device_id, occurred_at desc);
+
 -- Retention helper: delete readings older than the given interval.
 -- Schedule with pg_cron on Supabase, e.g.
 --   select cron.schedule('purge-telemetry', '0 3 * * *', $$select purge_readings('30 days')$$);

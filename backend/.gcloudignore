@@ -1,0 +1,3 @@
+# gcloud builds submit / gcloud run deploy --source: same exclusions as .dockerignore
+.gcloudignore
+#!include:.dockerignore

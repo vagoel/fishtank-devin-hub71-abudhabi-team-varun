@@ -275,7 +275,7 @@ class Detector:
         # Backup only: wearables with on-device detection ask "are you OK?" and report the
         # fall themselves. Give them time to do so; escalate here only when they did not
         # (telemetry-only firmware, or the device's report was lost).
-        grace = float(os.environ.get("HEATGUARD_SERVER_FALL_GRACE_S", "20"))
+        grace = float(os.environ.get("HEATGUARD_SERVER_FALL_GRACE_S", "5"))  # escalation adds its own grace
         if events and grace > 0:
             await asyncio.sleep(grace)
         for ev in events:

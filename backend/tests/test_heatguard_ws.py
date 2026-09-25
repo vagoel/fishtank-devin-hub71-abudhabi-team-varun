@@ -355,3 +355,40 @@ def test_dashboard_and_calls_are_off(client):
     bridge = client.get("/api/v1/bridge").json()
     assert bridge == {"enabled": False, "port": None, "connected": False}
     assert client.get("/admin").status_code == 200 and client.get("/health").status_code == 200
+
+
+def test_suspected_fall_waits_for_the_worker_before_calling(client, monkeypatch):
+    """A fall the band is still asking about must not call; "I'm OK" within the grace
+    cancels it, and no answer at all escalates once."""
+    wa, caller = FakeWhatsApp(), FakeCaller()
+    monkeypatch.setattr(core, "whatsapp", wa)
+    monkeypatch.setattr(core, "caller", caller)
+    monkeypatch.setattr(hg, "AUTO_WHATSAPP", True)
+    monkeypatch.setattr(hg, "ESCALATE_GRACE_S", 0.5)
+    dev = _dev()
+    base = {"schema": "heatguard.incident.v1", "device_id": dev, "type": "fall",
+            "status": "suspected", "details": {"impact_g": 6.0}}
+
+    # answered within the grace: no call, alert resolved
+    r = client.post("/v1/incidents", json=dict(base, incident_id=f"{dev}-b1-1"))
+    assert r.status_code == 201 and r.json()["escalated"] == []
+    client.post("/v1/incidents", json=dict(base, incident_id=f"{dev}-b1-1", status="worker_ok"))
+    time.sleep(1.0)
+    assert caller.calls == [] and wa.sent == []
+    assert core.alerts[r.json()["alert_id"]]["state"] == "resolved"
+
+    # never answered: escalates once after the grace and is marked no_response
+    r2 = client.post("/v1/incidents", json=dict(base, incident_id=f"{dev}-b1-2"))
+    assert r2.json()["escalated"] == []
+    wait_for(lambda: caller.calls and wa.sent)
+    time.sleep(0.3)
+    assert len(caller.calls) == 1
+    a = core.alerts[r2.json()["alert_id"]]
+    assert "NO RESPONSE" in a["title"]
+    stored = wait_for(lambda: client.get(f"/v1/incidents/{dev}-b1-2").json()["status"] == "no_response"
+                      and client.get(f"/v1/incidents/{dev}-b1-2").json())
+    assert stored["status"] == "no_response"
+
+    # an explicit SOS still calls at once
+    r3 = client.post("/v1/incidents", json=dict(base, incident_id=f"{dev}-b1-3", type="manual_sos"))
+    assert "call" in r3.json()["escalated"]

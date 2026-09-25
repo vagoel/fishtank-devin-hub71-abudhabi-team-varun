@@ -83,6 +83,10 @@ CHIP_OFFSET = float(os.environ.get("HEATGUARD_CHIP_OFFSET", "35"))
 CHIP_STOP = float(os.environ.get("HEATGUARD_CHIP_STOP", "70"))    # ≈35 °C air: stop work
 CHIP_CALL = float(os.environ.get("HEATGUARD_CHIP_CALL", "80"))    # ≈45 °C air: call for help
 TEMP_SUSTAIN_S = float(os.environ.get("HEATGUARD_TEMP_SUSTAIN_S", "8"))
+# A fall / heat-stroke alarm asks the worker "are you OK?" for 15 s on the band. Only call
+# when they did not answer: wait this long for worker_ok / cancelled before escalating.
+# SOS and voice "help me" are explicit requests and still escalate at once.
+ESCALATE_GRACE_S = float(os.environ.get("HEATGUARD_ESCALATE_GRACE_S", "20"))
 RING_S = 60
 
 SITE_BASE = {
@@ -596,8 +600,8 @@ class Core:
                                    % (est, chip, CHIP_CALL - CHIP_OFFSET), source="device",
                                    detail={"chip_c": chip, "wrist_c": est, "line_c": CHIP_CALL - CHIP_OFFSET})
                 self.send_cmd(w, {"cmd": "msg", "text": "Extreme heat. Stop work, sit in the shade, pour water on "
-                                                        "your head and neck. Help is on the way."})
-                self.escalate(a)
+                                                        "your head and neck. Press A if you are OK."})
+                self.escalate_after_grace(a, w)
                 self.record_incident(a, w, itype="heat_stroke", source="server",
                                      details={"chip_c": chip, "wrist_c": est, "line_c": CHIP_CALL - CHIP_OFFSET})
         elif ema < CHIP_CALL - 3:
@@ -770,6 +774,12 @@ class Core:
             self.update_alert(a, state="resolved", severity=sev,
                               message=a["message"] + {"worker_ok": " Worker answered they are OK.",
                                                       "cancelled": " Cancelled.", "resolved": " Resolved."}[status])
+            if inc["type"] == "heat_stroke" and status in ("worker_ok", "cancelled"):
+                # the band's own heat prompt was answered: the server's heat alarm is covered too
+                for x in self.worker_alerts(w):
+                    if x["type"] == "heat_critical" and x["state"] not in CLOSED:
+                        x["timeline"].append({"type": "worker_ok", "ts": time.time()})
+                        self.update_alert(x, state="resolved", message=x["message"] + " Worker answered they are OK.")
         elif status == "acknowledged":
             self.update_alert(a, state="acknowledged", severity=sev)
         elif status == "no_response":
@@ -780,8 +790,31 @@ class Core:
         escalated = []
         if sev == "critical" and status not in INCIDENT_CLOSED and not (prev or {}).get("escalated") \
                 and not a.get("_escalated_once"):
-            escalated = self.escalate(a)
+            if inc["type"] == "manual_sos" or status == "no_response":
+                escalated = self.escalate(a)          # asked for help, or did not answer: call now
+            else:
+                self.escalate_after_grace(a, w)       # give the worker the 15 s "are you OK?" first
         return {"alert_id": a["id"], "escalated": escalated}
+
+    def escalate_after_grace(self, a, w):
+        """Escalate `a` after ESCALATE_GRACE_S unless the worker answers first (alert closed)."""
+        if a.get("_escalated_once") or a.get("_grace_pending"):
+            return
+        a["_grace_pending"] = True
+
+        async def later():
+            try:
+                await asyncio.sleep(ESCALATE_GRACE_S)
+                if a["state"] in CLOSED or a.get("_escalated_once"):
+                    return                              # "I'm OK" / cancelled / resolved: no call
+                a["timeline"].append({"type": "no_answer_%ds" % ESCALATE_GRACE_S, "ts": time.time()})
+                self.update_alert(a, state="open", title=a["title"].split(" · ")[0] + " · NO RESPONSE")
+                self.escalate(a)
+                self.record_incident(a, w, status="no_response")
+            finally:
+                a["_grace_pending"] = False
+
+        self.spawn(later())
 
     async def capture_window(self, a, w, t):
         await asyncio.sleep(4.5)

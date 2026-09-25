@@ -85,6 +85,7 @@ P = {
     "ERRATIC_SUSTAIN_S": 5,
     "INACT_S": 300,
     "PROMPT_S": 15,         # how long the worker has to answer "are you OK?"
+    "SOS_WAIT_S": 15,       # SOS hold: time to cancel before the call goes out
 }
 
 # ---------------------------------------------------------------- heat tiers
@@ -191,7 +192,8 @@ plan = {"wbgt": None, "work": 45, "rest": 15, "elapsed": 0.0, "phase": "work",
 rest_end_ms = 0
 page = 0
 
-ui = "normal"               # normal | prompt | escalated | sos | ack | msg | banner
+ui = "normal"               # normal | prompt | escalated | sos_wait | sos | ack | msg | banner
+ALARM_UI = ("prompt", "escalated", "sos_wait", "sos")    # screens nothing else may replace
 ui_kind = ""
 ui_until = 0
 ui_text = ""
@@ -415,7 +417,7 @@ def inc_event(kind, seq, parts):
             if kind == "heat_stroke":
                 heat_rec[2] = rec
             # the alarm that owns the screen gets the worker's answer
-            if kind == "sos" or (kind != "impact" and ui not in ("prompt", "escalated", "sos")):
+            if kind == "sos" or (kind != "impact" and ui not in ALARM_UI):
                 inc_cur = rec
             inc_put(rec, "suspected")
         elif kind in HEAT_KINDS:
@@ -523,7 +525,7 @@ def handle(c):
         buzz(3)
         beep(2400, 150)
     elif cmd == "msg":
-        if ui not in ("prompt", "escalated", "sos"):
+        if ui not in ALARM_UI:
             ui, ui_kind, ui_text, ui_color = "msg", "msg", str(c.get("text", ""))[:140], WHITE
             ui_until = time.ticks_add(now, 30000)
         buzz(2)
@@ -532,7 +534,7 @@ def handle(c):
         text = str(c.get("text", ""))[:140]
         if v_state:
             v_msg = text
-        elif ui not in ("prompt", "escalated", "sos"):
+        elif ui not in ALARM_UI:
             ui, ui_kind, ui_text, ui_color = "msg", "say", text, WHITE
             ui_until = time.ticks_add(now, 30000)
             buzz(1)
@@ -1718,8 +1720,8 @@ def voice_fail(msg):
 
 def talk_start(now):
     global v_state, v_t0, v_msg, v_lvl, v_first, v_skip, v_sid, v_sids
-    if ui == "prompt":
-        return                  # answer the prompt with A first
+    if ui == "prompt" or ui == "sos_wait":
+        return                  # answer the prompt (or cancel the SOS) with A first
     if v_state:
         voice_stop()            # a new question replaces the running one
     if not wifi_up:
@@ -2177,7 +2179,7 @@ def run_buzz(now):
 
 def banner(title, text, color, ms):
     global ui, ui_kind, ui_text, ui_color, ui_until
-    if ui in ("prompt", "escalated", "sos"):
+    if ui in ALARM_UI:
         return
     ui, ui_kind, ui_text, ui_color = "banner", title, text, color
     ui_until = time.ticks_add(time.ticks_ms(), ms)
@@ -2205,7 +2207,7 @@ def prompt(kind, **detail):
     (or the lack of one) follows as <kind>_ok / <kind>_noresp."""
     global ui, ui_kind, ui_until
     ev(kind, **detail)          # first, so nothing below can delay or lose it
-    if ui in ("prompt", "escalated", "sos"):
+    if ui in ALARM_UI:
         if ui != "prompt":
             alert_again()
         return
@@ -2267,7 +2269,7 @@ def fall_step(now, a, g):
                        still=1 if still else 0)
             elif imp_g >= P["IMPACT_ONLY_G"]:
                 ev("impact", impact_g=imp_g, freefall_ms=ffd, post_std=std, post_gyro=gmean)
-                if ui in ("escalated", "sos"):
+                if ui in ("escalated", "sos", "sos_wait"):
                     alert_again()
             fs, ff_ms = 0, 0
 
@@ -2563,6 +2565,15 @@ def draw_overlay(now):
         text_c(str(left), 92, WHITE, bg, "DejaVu56")
         cv.fillRoundRect(10, 176, W - 20, 40, 10, WHITE)
         text_c("A = I'm OK", 188, bg, WHITE, "Montserrat16")
+    elif ui == "sos_wait":
+        bg = RED if (now // 400) % 2 == 0 else 0x7F1D1D
+        cv.fillScreen(bg)
+        left = max(0, time.ticks_diff(ui_until, now)) // 1000 + 1
+        text_c("SOS", 22, WHITE, bg, "Montserrat24")
+        text_c("Calling in %d s" % left, 60, WHITE, bg, "Montserrat14")
+        text_c(str(left), 92, WHITE, bg, "DejaVu56")
+        cv.fillRoundRect(10, 176, W - 20, 40, 10, WHITE)
+        text_c("A = cancel", 188, bg, WHITE, "Montserrat16")
     elif ui == "escalated" or ui == "sos":
         cv.fillScreen(RED)
         text_c("SOS" if ui == "sos" else "ALERT", 30, WHITE, RED, "Montserrat24")
@@ -2621,12 +2632,14 @@ def buttons(now):
     if a_down:
         if holdA == 0:
             holdA = now
-        if not firedA and time.ticks_diff(now, holdA) > 2000 and ui not in ("sos", "escalated"):
-            firedA = True
-            ev("sos")
+        if (not firedA and time.ticks_diff(now, holdA) > 2000
+                and ui not in ("sos_wait", "sos", "escalated")):
+            firedA = True       # so letting go of this hold is not the cancel press
+            ev("sos")           # event + incident (suspected) first
             if v_state:
                 voice_stop()
-            set_ui("sos")
+            # the call waits SOS_WAIT_S for a cancel; then sos_noresp and SOS SENT
+            set_ui("sos_wait", P["SOS_WAIT_S"] * 1000)
             buzz(2, 400, 150)
             beep(3000, 300)
     else:
@@ -2652,7 +2665,12 @@ def buttons(now):
 
 def click_a():
     global ui, still_ms
-    if v_state and ui != "prompt":
+    if ui == "sos_wait":
+        ev("sos_cancel")        # incident: cancelled, no call
+        ui = "normal"
+        banner("CANCELLED", "SOS cancelled. No call.", GREEN, 2500)
+        buzz(1)
+    elif v_state and ui != "prompt":
         voice_stop()
     elif ui == "prompt":
         ev(ui_kind + "_ok")
@@ -2669,14 +2687,14 @@ def click_a():
         set_ui("normal")
 
 
-def set_ui(mode):
+def set_ui(mode, ms=3600000):
     global ui, ui_kind, ui_until, alert_n
-    if mode == "sos":
+    if mode in ("sos", "sos_wait"):
         ui_kind = "sos"
-    if mode in ("sos", "escalated"):
+    if mode in ("sos", "escalated", "sos_wait") and ui != "sos_wait":
         alert_n = 1
     ui = mode
-    ui_until = time.ticks_add(time.ticks_ms(), 3600000)
+    ui_until = time.ticks_add(time.ticks_ms(), ms)
 
 
 def ui_tick(now):
@@ -2687,6 +2705,14 @@ def ui_tick(now):
         if time.ticks_diff(now, ui_until) >= 0:
             ev(ui_kind + "_noresp")
             set_ui("escalated")
+            buzz(4, 400, 150)
+            beep(3200, 500)
+    elif ui == "sos_wait":
+        if (now // 1000) % 2 == 0 and buzz_state == 0 and not buzz_q:
+            buzz(1, 250, 100)
+        if time.ticks_diff(now, ui_until) >= 0:
+            ev("sos_noresp")    # incident: no_response, the backend calls now
+            set_ui("sos")
             buzz(4, 400, 150)
             beep(3200, 500)
     elif ui in ("banner", "msg", "ack") and time.ticks_diff(now, ui_until) >= 0:

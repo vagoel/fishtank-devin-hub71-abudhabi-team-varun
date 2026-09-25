@@ -8,6 +8,7 @@
 |---|---|
 | Demo Video | [youtu.be/cBoCmNquzvs](https://youtu.be/cBoCmNquzvs) |
 | Control Room Dashboard | [aman-dashboard-varun.netlify.app](https://aman-dashboard-varun.netlify.app/) |
+| Wearable Admin Panel | [telemetry-backend…/admin](https://telemetry-backend-501582454609.asia-northeast1.run.app/admin) |
 | Device Photo | ![HeatGuard wearable](docs/heatguard/assets/device1.png) |
 
 ---

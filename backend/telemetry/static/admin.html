@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telemetry admin</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0f1216; --panel: #161b22; --border: #262d37; --fg: #e6edf3; --muted: #8b98a8;
+    --accent: #4fa3ff; --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+    --t: #ff7b72; --x: #4fa3ff; --y: #3fb950; --z: #d2a8ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  header .spacer { flex: 1; }
+  .pill { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #30363d; }
+  .pill.ok { background: rgba(63,185,80,.18); color: var(--ok); }
+  .pill.bad { background: rgba(248,81,73,.18); color: var(--bad); }
+  .pill.warn { background: rgba(210,153,34,.18); color: var(--warn); }
+  select, button { background: #21262d; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--accent); }
+  main { padding: 16px 20px 40px; display: grid; gap: 16px; max-width: 1600px; margin: 0 auto; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+  .kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  .kpi .value { font-size: 22px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .kpi .sub { color: var(--muted); font-size: 11px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .panel h2 { font-size: 13px; margin: 0 0 8px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; display: flex; align-items: center; gap: 10px; }
+  .panel h2 .right { margin-left: auto; display: flex; gap: 8px; align-items: center; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .chart { position: relative; height: 220px; }
+  .chart.tall { height: 260px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; position: sticky; top: 0; background: var(--panel); }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: rgba(79,163,255,.06); }
+  tbody tr.selected { background: rgba(79,163,255,.14); }
+  tbody tr.idle td { color: var(--muted); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
+  .dot.live { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .stats b { color: var(--fg); font-weight: 500; }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+  code { background: #21262d; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .bad { color: var(--bad); } .warn { color: var(--warn); } .ok { color: var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Telemetry admin</h1>
+  <span id="health" class="pill">connecting…</span>
+  <span id="clock" style="color:var(--muted)"></span>
+  <div class="spacer"></div>
+  <label>Refresh
+    <select id="interval">
+      <option value="500">0.5 s</option>
+      <option value="1000" selected>1 s</option>
+      <option value="2000">2 s</option>
+      <option value="5000">5 s</option>
+    </select>
+  </label>
+  <button id="pause">Pause</button>
+  <a href="/docs" style="color:var(--accent)">API docs</a>
+</header>
+
+<main>
+  <section class="kpis">
+    <div class="kpi"><div class="label">Ingest rate</div><div class="value" id="k-rate">–</div><div class="sub">rows / s (last 5 s avg)</div></div>
+    <div class="kpi"><div class="label">Active devices</div><div class="value" id="k-devices">–</div><div class="sub" id="k-devices-sub">sent data in last 10 s</div></div>
+    <div class="kpi"><div class="label">Rows written</div><div class="value" id="k-written">–</div><div class="sub" id="k-written-sub">to Postgres since start</div></div>
+    <div class="kpi"><div class="label">Pending</div><div class="value" id="k-pending">–</div><div class="sub" id="k-pending-sub">rows waiting for COPY</div></div>
+    <div class="kpi"><div class="label">Flush</div><div class="value" id="k-flush">–</div><div class="sub" id="k-flush-sub">ms (last / avg)</div></div>
+    <div class="kpi"><div class="label">Frames</div><div class="value" id="k-frames">–</div><div class="sub" id="k-frames-sub">dropped · out-of-order · reboots</div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Rows ingested per second, by device <span class="right" id="rate-window"></span></h2>
+    <div class="chart"><canvas id="rateChart"></canvas></div>
+  </section>
+
+  <section class="panel">
+    <h2>Devices <span class="right"><span id="device-count"></span>
+      <label><input type="checkbox" id="show-idle"> show idle (known in DB, no data since API start)</label></span></h2>
+    <div style="overflow:auto; max-height: 340px">
+    <table>
+      <thead><tr>
+        <th>Device</th><th>rows/s</th><th>Temperature</th><th>Gyro</th><th>Accel</th>
+        <th>Last ingest</th><th>Boot</th><th>Seq</th><th>Dropped</th><th>Out of order</th><th>Reboots</th><th>Frame</th>
+      </tr></thead>
+      <tbody id="devices"></tbody>
+    </table>
+    </div>
+    <div class="empty" id="devices-empty">No devices yet — POST a frame to <code>/v1/ingest/frames</code>.</div>
+  </section>
+
+  <section class="panel">
+    <h2>
+      <span>Time series · <span id="sel-device" style="color:var(--fg)">no device selected</span></span>
+      <span class="right">
+        <label>Points <select id="points">
+          <option>200</option><option selected>500</option><option>1000</option><option>2000</option><option>5000</option>
+        </select></label>
+        <label>Source <select id="source">
+          <option value="auto" selected>auto</option><option value="memory">memory</option><option value="database">database</option>
+        </select></label>
+        <span id="sel-source" style="color:var(--muted)"></span>
+      </span>
+    </h2>
+    <div class="grid3">
+      <div>
+        <div class="chart tall"><canvas id="tempChart"></canvas></div>
+        <div class="stats" id="temp-stats"></div>
+      </div>
+      <div>
+        <div class="chart tall"><canvas id="gyroChart"></canvas></div>
+        <div class="stats" id="gyro-stats"></div>
+      </div>
+      <div>
+        <div class="chart tall"><canvas id="accelChart"></canvas></div>
+        <div class="stats" id="accel-stats"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n, d = 0) => n == null ? '–' : Number(n).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d });
+  const ago = (t, now) => {
+    if (t == null) return '–';
+    const s = Math.max(0, now - t);
+    if (s < 1) return `${Math.round(s * 1000)} ms ago`;
+    if (s < 60) return `${s.toFixed(1)} s ago`;
+    if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+    return `${(s / 3600).toFixed(1)} h ago`;
+  };
+  const hms = (t) => {
+    const d = new Date(t * 1000);
+    return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+  };
+  const PALETTE = ['#4fa3ff', '#3fb950', '#d2a8ff', '#ff7b72', '#d29922', '#56d4dd', '#f778ba', '#a5d6ff', '#7ee787', '#ffa657'];
+  const colorFor = (() => { const m = new Map(); return (k) => { if (!m.has(k)) m.set(k, PALETTE[m.size % PALETTE.length]); return m.get(k); }; })();
+
+  Chart.defaults.color = '#8b98a8';
+  Chart.defaults.borderColor = '#262d37';
+  Chart.defaults.animation = false;
+  Chart.defaults.font.family = 'ui-sans-serif, system-ui, sans-serif';
+  Chart.defaults.plugins.legend.labels.boxWidth = 10;
+
+  // ---- rate chart (stacked bars per device) --------------------------------------------
+  const rateChart = new Chart($('rateChart'), {
+    type: 'bar',
+    data: { labels: [], datasets: [] },
+    options: {
+      maintainAspectRatio: false, responsive: true,
+      scales: {
+        x: { stacked: true, ticks: { maxTicksLimit: 12, autoSkip: true }, grid: { display: false } },
+        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'rows / s' } },
+      },
+      plugins: { legend: { position: 'bottom' }, tooltip: { mode: 'index' } },
+    },
+  });
+
+  // ---- time series charts -------------------------------------------------------------
+  const seriesOpts = (yTitle) => ({
+    maintainAspectRatio: false, responsive: true, parsing: false, normalized: true,
+    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    elements: { point: { radius: 0 }, line: { borderWidth: 1.4 } },
+    scales: {
+      x: { type: 'linear', ticks: { maxTicksLimit: 8, callback: (v) => hms(v) }, grid: { display: false } },
+      y: { title: { display: true, text: yTitle } },
+    },
+    plugins: {
+      legend: { position: 'bottom' },
+      tooltip: { callbacks: { title: (items) => items.length ? hms(items[0].parsed.x) : '' } },
+      decimation: { enabled: true, algorithm: 'lttb', samples: 400 },
+    },
+  });
+  const line = (label, color) => ({ label, data: [], borderColor: color, backgroundColor: color, tension: 0 });
+  const tempChart = new Chart($('tempChart'), { type: 'line', data: { datasets: [line('die temperature', '#ff7b72')] }, options: seriesOpts('°C') });
+  const gyroChart = new Chart($('gyroChart'), { type: 'line', data: { datasets: [line('x', '#4fa3ff'), line('y', '#3fb950'), line('z', '#d2a8ff')] }, options: seriesOpts('°/s') });
+  const accelChart = new Chart($('accelChart'), { type: 'line', data: { datasets: [line('x', '#4fa3ff'), line('y', '#3fb950'), line('z', '#d2a8ff')] }, options: seriesOpts('g') });
+
+  // ---- state ---------------------------------------------------------------------------
+  let selected = null;
+  let paused = false;
+  let timer = null;
+  let dbDevices = new Map(); // device_id -> row from /v1/devices (known but maybe idle)
+
+  const setHealth = (cls, text) => { const h = $('health'); h.className = `pill ${cls}`; h.textContent = text; };
+
+  async function getJSON(url) {
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`${url} → ${r.status}`);
+    return r.json();
+  }
+
+  async function loadDbDevices() {
+    try {
+      const rows = await getJSON('/v1/devices');
+      dbDevices = new Map(rows.map((r) => [r.device_id, r]));
+    } catch (e) { console.warn(e); }
+  }
+
+  function renderKpis(o) {
+    const now = o.now;
+    const hist = o.rate.history;
+    const lastSec = Math.floor(now);
+    const recent = hist.filter((h) => h.t >= lastSec - 5 && h.t < lastSec);
+    const rows5 = recent.reduce((a, h) => a + Object.values(h.rows).reduce((x, y) => x + y, 0), 0);
+    $('k-rate').textContent = fmt(rows5 / 5);
+    const active = o.devices.filter((d) => now - d.last_ingest < 10).length;
+    $('k-devices').textContent = fmt(active);
+    $('k-devices-sub').textContent = `${o.devices.length} seen since start · ${dbDevices.size} in database`;
+    const w = o.writer;
+    $('k-written').textContent = fmt(w.rows_written);
+    $('k-written-sub').textContent = `${fmt(w.flushes)} flushes · ${fmt(w.rows_queued)} queued`;
+    $('k-pending').textContent = fmt(w.rows_pending);
+    $('k-pending').className = 'value ' + (w.rows_pending > 0.5 * w.queue_max_rows ? 'warn' : '');
+    $('k-pending-sub').textContent = w.rejected_rows
+      ? `${fmt(w.rejected_rows)} rejected (503) · max ${fmt(w.queue_max_rows)}`
+      : `rows waiting for COPY · max ${fmt(w.queue_max_rows)}`;
+    $('k-flush').textContent = `${fmt(w.last_flush_ms)} / ${fmt(w.avg_flush_ms)}`;
+    $('k-flush-sub').innerHTML = w.failed_flushes
+      ? `<span class="bad">${fmt(w.failed_flushes)} failed</span> · ${w.last_error ? String(w.last_error).slice(0, 60) : ''}`
+      : 'ms (last / avg)';
+    const f = o.frames || {};
+    $('k-frames').textContent = fmt(f.frames_received);
+    $('k-frames-sub').innerHTML = `<span class="${f.dropped_frames ? 'warn' : ''}">${fmt(f.dropped_frames)} dropped</span> · ${fmt(f.out_of_order_frames)} out-of-order · ${fmt(f.reboots)} reboots`;
+  }
+
+  function renderRate(o) {
+    const now = Math.floor(o.now);
+    const win = Math.min(o.rate.window_s, 120);
+    const secs = [];
+    for (let t = now - win; t < now; t++) secs.push(t);
+    const byT = new Map(o.rate.history.map((h) => [h.t, h.rows]));
+    const devices = new Set();
+    o.rate.history.forEach((h) => Object.keys(h.rows).forEach((d) => devices.add(d)));
+    rateChart.data.labels = secs.map((t) => new Date(t * 1000).toTimeString().slice(0, 8));
+    rateChart.data.datasets = [...devices].sort().map((d) => ({
+      label: d, backgroundColor: colorFor(d), borderWidth: 0,
+      data: secs.map((t) => (byT.get(t) || {})[d] || 0),
+    }));
+    rateChart.update();
+    $('rate-window').textContent = `last ${win} s`;
+  }
+
+  function renderDevices(o) {
+    const now = o.now;
+    const live = new Map(o.devices.map((d) => [d.device_id, d]));
+    const ids = new Set([...live.keys(), ...dbDevices.keys()]);
+    const list = [...ids].map((id) => {
+      const l = live.get(id);
+      const db = dbDevices.get(id);
+      const st = (l && l.state) || (db && db.state) || null;
+      const lastSeen = l ? l.last_ingest : db ? Date.parse(db.last_seen) / 1000 : null;
+      return { id, live: l, db, st, lastSeen };
+    }).sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+
+    if (!selected && list.length) selectDevice(list[0].id, false);
+    const liveCount = list.filter((d) => d.live).length;
+    const shown = $('show-idle').checked ? list : list.filter((d) => d.live || d.id === selected);
+
+    const lastSec = Math.floor(now);
+    const rate = (id) => {
+      const recent = o.rate.history.filter((h) => h.t >= lastSec - 5 && h.t < lastSec);
+      return recent.reduce((a, h) => a + (h.rows[id] || 0), 0) / 5;
+    };
+
+    const tbody = $('devices');
+    tbody.innerHTML = shown.map(({ id, live: l, st, lastSeen }) => {
+      const isLive = lastSeen != null && now - lastSeen < 10;
+      const rows = l ? l.rows : { temperature: null, gyro: null, accel: null };
+      return `<tr data-id="${id}" class="${id === selected ? 'selected' : ''} ${l ? '' : 'idle'}">
+        <td><span class="dot ${isLive ? 'live' : ''}"></span>${id}</td>
+        <td>${fmt(rate(id))}</td>
+        <td>${fmt(rows.temperature)}</td><td>${fmt(rows.gyro)}</td><td>${fmt(rows.accel)}</td>
+        <td>${ago(lastSeen, now)}</td>
+        <td>${st ? st.boot_id : '–'}</td>
+        <td>${st ? fmt(st.last_sequence) : '–'}</td>
+        <td class="${st && st.dropped_frames ? 'warn' : ''}">${st ? fmt(st.dropped_frames) : '–'}</td>
+        <td>${st ? fmt(st.out_of_order_frames) : '–'}</td>
+        <td>${st ? fmt(st.reboots) : '–'}</td>
+        <td>${st && st.frame ? st.frame : '–'}</td>
+      </tr>`;
+    }).join('');
+    $('devices-empty').style.display = shown.length ? 'none' : '';
+    $('devices-empty').innerHTML = list.length
+      ? `${list.length} idle device${list.length === 1 ? '' : 's'} hidden — tick "show idle" to list them.`
+      : 'No devices yet — POST a frame to <code>/v1/ingest/frames</code>.';
+    $('device-count').textContent = `${liveCount} live · ${list.length - liveCount} idle`;
+    tbody.querySelectorAll('tr').forEach((tr) => tr.addEventListener('click', () => selectDevice(tr.dataset.id, true)));
+  }
+
+  function selectDevice(id, refresh) {
+    selected = id;
+    $('sel-device').textContent = id;
+    document.querySelectorAll('#devices tr').forEach((tr) => tr.classList.toggle('selected', tr.dataset.id === id));
+    if (refresh) refreshSeries();
+  }
+
+  const setStats = (el, pairs) => { el.innerHTML = pairs.filter(([, v]) => v != null).map(([k, v]) => `${k} <b>${v}</b>`).join('<span style="opacity:.3">|</span>'); };
+
+  async function refreshSeries() {
+    if (!selected) return;
+    const n = $('points').value;
+    const src = $('source').value;
+    const q = `?last=${n}&source=${src}`;
+    const id = encodeURIComponent(selected);
+    const [t, g, a, ta, ga, aa] = await Promise.all([
+      getJSON(`/v1/readings/temperature/${id}${q}`), getJSON(`/v1/readings/gyro/${id}${q}`), getJSON(`/v1/readings/accel/${id}${q}`),
+      getJSON(`/v1/analytics/temperature/${id}${q}`), getJSON(`/v1/analytics/gyro/${id}${q}`), getJSON(`/v1/analytics/accel/${id}${q}`),
+    ]);
+    if (t.device_id !== selected) return; // selection changed mid-flight
+
+    tempChart.data.datasets[0].data = t.ts.map((x, i) => ({ x, y: t.values[i] }));
+    tempChart.update();
+    for (let k = 0; k < 3; k++) {
+      gyroChart.data.datasets[k].data = g.ts.map((x, i) => ({ x, y: g.samples[i][k] }));
+      accelChart.data.datasets[k].data = a.ts.map((x, i) => ({ x, y: a.samples[i][k] }));
+    }
+    gyroChart.update(); accelChart.update();
+
+    $('sel-source').textContent = `${t.count}/${g.count}/${a.count} pts · from ${t.source}`;
+    const s = ta.stats || {}, tr = ta.trend || {};
+    setStats($('temp-stats'), [
+      ['latest', ta.latest ? `${fmt(ta.latest.value, 2)} °C` : null], ['mean', ta.count ? fmt(s.mean, 2) : null],
+      ['min', ta.count ? fmt(s.min, 2) : null], ['max', ta.count ? fmt(s.max, 2) : null],
+      ['slope', tr.slope_per_min != null ? `${fmt(tr.slope_per_min, 3)} °C/min` : null],
+      ['rate', ta.window ? `${fmt(ta.window.sample_rate_hz, 1)} Hz` : null],
+      ['anomalies', ta.anomalies ? fmt(ta.anomalies.count) : null],
+    ]);
+    const gm = ga.magnitude || {}, mo = ga.motion || {};
+    setStats($('gyro-stats'), [
+      ['|ω| mean', ga.count ? `${fmt(gm.mean, 2)} °/s` : null], ['peak', ga.count && ga.peak ? `${fmt(ga.peak.magnitude, 1)} °/s` : null],
+      ['moving', mo.is_moving != null ? (mo.is_moving ? 'yes' : 'no') : null],
+      ['active', mo.active_fraction != null ? `${fmt(mo.active_fraction * 100, 0)} %` : null],
+      ['rate', ga.window ? `${fmt(ga.window.sample_rate_hz, 1)} Hz` : null],
+    ]);
+    const gr = aa.gravity || {}, vb = aa.vibration || {};
+    setStats($('accel-stats'), [
+      ['|g|', aa.count ? fmt(gr.magnitude, 3) : null], ['pitch', gr.pitch_deg != null ? `${fmt(gr.pitch_deg, 1)}°` : null],
+      ['roll', gr.roll_deg != null ? `${fmt(gr.roll_deg, 1)}°` : null], ['up', gr.dominant_axis || null],
+      ['vib rms', vb.rms_g != null ? `${fmt(vb.rms_g, 4)} g` : null], ['vib peak', vb.peak_g != null ? `${fmt(vb.peak_g, 3)} g` : null],
+    ]);
+  }
+
+  let tick = 0;
+  async function refresh() {
+    try {
+      if (tick % 10 === 0) await loadDbDevices();
+      tick++;
+      const [o, h] = await Promise.all([getJSON('/v1/admin/overview'), fetch('/health', { cache: 'no-store' }).then((r) => r.json().then((b) => ({ ok: r.ok, body: b })))]);
+      setHealth(h.ok ? 'ok' : 'bad', h.ok ? 'healthy · db connected' : `degraded · ${h.body.status}`);
+      $('clock').textContent = new Date(o.now * 1000).toLocaleTimeString();
+      renderKpis(o); renderRate(o); renderDevices(o);
+      await refreshSeries();
+    } catch (e) {
+      setHealth('bad', `unreachable · ${e.message}`);
+    }
+  }
+
+  function schedule() {
+    clearInterval(timer);
+    if (!paused) timer = setInterval(refresh, Number($('interval').value));
+  }
+  $('interval').addEventListener('change', schedule);
+  $('pause').addEventListener('click', () => { paused = !paused; $('pause').textContent = paused ? 'Resume' : 'Pause'; schedule(); if (!paused) refresh(); });
+  $('points').addEventListener('change', refreshSeries);
+  $('show-idle').addEventListener('change', refresh);
+  $('source').addEventListener('change', refreshSeries);
+
+  refresh();
+  schedule();
+})();
+</script>
+</body>
+</html>

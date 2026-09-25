@@ -99,7 +99,8 @@
   </section>
 
   <section class="panel">
-    <h2>Worker safety · HeatGuard <span class="right"><span id="inc-count"></span></span></h2>
+    <h2>Worker safety · HeatGuard <span class="right"><span id="inc-count"></span>
+      <button id="clear-incidents" title="Resolve every open incident and alert">Clear active incidents</button></span></h2>
     <div class="safety">
       <div class="heat">
         <div class="note">Selected band: <b id="heat-device" style="color:var(--fg)">–</b></div>
@@ -486,6 +487,17 @@
     clearInterval(timer);
     if (!paused) timer = setInterval(refresh, Number($('interval').value));
   }
+  $('clear-incidents').addEventListener('click', async () => {
+    if (!confirm('Resolve all active incidents and alerts? They stay in the history.')) return;
+    const b = $('clear-incidents'); b.disabled = true; b.textContent = 'Clearing…';
+    try {
+      const r = await fetch('/api/v1/admin/clear', { method: 'POST' });
+      const j = await r.json();
+      b.textContent = r.ok ? `Cleared ${j.incidents_resolved} incidents · ${j.alerts_closed} alerts` : 'Clear failed';
+      await refreshIncidents();
+    } catch (e) { b.textContent = 'Clear failed'; }
+    setTimeout(() => { b.disabled = false; b.textContent = 'Clear active incidents'; }, 3000);
+  });
   $('interval').addEventListener('change', schedule);
   $('pause').addEventListener('click', () => { paused = !paused; $('pause').textContent = paused ? 'Resume' : 'Pause'; schedule(); if (!paused) refresh(); });
   $('points').addEventListener('change', refreshSeries);

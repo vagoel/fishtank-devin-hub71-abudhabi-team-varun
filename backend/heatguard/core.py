@@ -1261,6 +1261,31 @@ def heat_thresholds():
             "sustain_s": TEMP_SUSTAIN_S}
 
 
+@router.post("/api/v1/admin/clear")
+async def clear_active():
+    """Dashboard reset: resolve every open incident (kept in history) and close every open
+    alert. Pending "are you OK?" escalations see the closed alert and do not call."""
+    now = time.time()
+    closed_alerts = 0
+    for a in list(core.alerts.values()):
+        if a["state"] not in CLOSED:
+            a["timeline"].append({"type": "cleared_by_dashboard", "ts": now})
+            a["_escalated_once"] = True                     # nothing left to call about
+            core.update_alert(a, state="resolved")
+            closed_alerts += 1
+    for w in core.live.values():                            # return the bands to their normal screen
+        core.send_cmd(w, {"cmd": "clear"})
+    cleared = 0
+    if core.service is not None:
+        async with core.service.pool.acquire() as conn:
+            res = await conn.execute(
+                "update incidents set status = 'resolved', updated_at = now(), "
+                "details = coalesce(details, '{}'::jsonb) || '{\"cleared_by\": \"dashboard reset\"}'::jsonb "
+                "where status not in ('worker_ok', 'cancelled', 'resolved')")
+        cleared = int(res.split()[-1]) if res else 0
+    return {"ok": True, "incidents_resolved": cleared, "alerts_closed": closed_alerts}
+
+
 @router.get("/api/v1/heat")
 async def get_heat_thresholds():
     return heat_thresholds()

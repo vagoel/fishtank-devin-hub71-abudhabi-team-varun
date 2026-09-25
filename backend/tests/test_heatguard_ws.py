@@ -392,3 +392,20 @@ def test_suspected_fall_waits_for_the_worker_before_calling(client, monkeypatch)
     # an explicit SOS still calls at once
     r3 = client.post("/v1/incidents", json=dict(base, incident_id=f"{dev}-b1-3", type="manual_sos"))
     assert "call" in r3.json()["escalated"]
+
+
+def test_admin_clear_resolves_open_incidents_and_alerts(client, monkeypatch):
+    caller = FakeCaller()
+    monkeypatch.setattr(core, "caller", caller)
+    monkeypatch.setattr(hg, "AUTO_WHATSAPP", True)
+    monkeypatch.setattr(hg, "ESCALATE_GRACE_S", 0.5)
+    dev = _dev()
+    r = client.post("/v1/incidents", json={"schema": "heatguard.incident.v1", "incident_id": f"{dev}-clr-1",
+                                           "device_id": dev, "type": "fall", "status": "suspected"})
+    aid = r.json()["alert_id"]
+    res = client.post("/api/v1/admin/clear").json()
+    assert res["ok"] and res["incidents_resolved"] >= 1 and res["alerts_closed"] >= 1
+    assert client.get(f"/v1/incidents/{dev}-clr-1").json()["status"] == "resolved"
+    assert core.alerts[aid]["state"] == "resolved"
+    time.sleep(1.0)
+    assert caller.calls == []          # the pending "are you OK?" escalation was dropped

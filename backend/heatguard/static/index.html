@@ -1788,7 +1788,7 @@ function statsHTML(w) {
     ['Workload', `<span class="chip wl wl-${esc(w.workload)}">${esc(WORKLOAD[w.workload] || w.workload || '—')}</span>`, acc],
     isNum(w.wrist_temp_c)
       ? ['Wrist air temp', `<span class="v t-${w.temp_level === 'call' ? 'alert' : w.temp_level === 'stop' ? 'caution' : 'ok'}" style="color:var(--tone)">${fx(w.wrist_temp_c, 1)}<small>°C</small></span>`,
-         `chip ${fx(w.device_temp_c, 0)} °C · stop ≥35 · call ≥45 · ${w.temp_level === 'call' ? 'CALLING' : w.temp_level === 'stop' ? 'STOP WORK' : 'OK'}`]
+         `chip ${fx(w.device_temp_c, 0)} °C · stop ≥${fx(((S.config || {}).heat || {}).air_stop ?? 35, 0)} · call ≥${fx(((S.config || {}).heat || {}).air_call ?? 45, 0)} · ${w.temp_level === 'call' ? 'CALLING' : w.temp_level === 'stop' ? 'STOP WORK' : 'OK'}`]
       : ['Device (chip) temp', `${fx(w.device_temp_c, 1)}<small>°C</small>`, 'Wearable sensor, not skin'],
     ['Battery', batteryHTML(w.battery), ''],
     ['Risk', gaugeHTML(w.risk), ''],

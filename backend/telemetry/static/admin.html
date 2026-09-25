@@ -236,6 +236,14 @@
   // ---- HeatGuard: heat tiers + incidents ------------------------------------------------
   // Mirrors the backend detector defaults (HEATGUARD_CHIP_OFFSET/STOP/CALL); /v1/heatguard/status wins when present.
   const HEAT = { offset: 35, stop: 70, call: 80 };
+  async function loadHeat() {
+    try {
+      const h = await getJSON('/api/v1/heat');
+      HEAT.offset = h.chip_offset; HEAT.stop = h.chip_stop; HEAT.call = h.chip_call;
+      $('heat-rule').textContent = `Stop work at ≥ ${fmt(h.air_stop, 0)} °C air near the band (die ≥ ${fmt(h.chip_stop, 0)} °C), `
+        + `call for help at ≥ ${fmt(h.air_call, 0)} °C (die ≥ ${fmt(h.chip_call, 0)} °C), each sustained ${fmt(h.sustain_s, 0)} s.`;
+    } catch (e) { /* older backend: keep defaults */ }
+  }
   const TYPE_LABEL = { fall: 'Fall', heat_stroke: 'Heat illness risk', manual_sos: 'SOS', tremor: 'Shaking', inactivity: 'No movement', unwell: 'Unwell', impact: 'Hard impact', other: 'Other' };
   const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const tierOf = (die) => die == null ? ['none', 'NO DATA'] : die >= HEAT.call ? ['call', 'CALL FOR HELP'] : die >= HEAT.stop ? ['stop', 'STOP WORK'] : ['ok', 'OK'];
@@ -462,7 +470,7 @@
   let tick = 0;
   async function refresh() {
     try {
-      if (tick % 10 === 0) await loadDbDevices();
+      if (tick % 10 === 0) await Promise.all([loadDbDevices(), loadHeat()]);
       tick++;
       const [o, h] = await Promise.all([getJSON('/v1/admin/overview'), fetch('/health', { cache: 'no-store' }).then((r) => r.json().then((b) => ({ ok: r.ok, body: b })))]);
       setHealth(h.ok ? 'ok' : 'bad', h.ok ? 'healthy · db connected' : `degraded · ${h.body.status}`);

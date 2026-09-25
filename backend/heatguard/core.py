@@ -1090,6 +1090,7 @@ class Core:
             "gateway": {"lan": LAN, "udp_port": UDP_PORT, "ips": self.ips, "http_port": HTTP_PORT,
                         "device_ws": "/v1/device/ws"},
             "fleet_size": len(self.fleet), "timewarp": self.config["timewarp"],
+            "heat": heat_thresholds(),
             "sim_events": self.config["sim_events"],
             "assistant": self.assistant.describe() if self.assistant else
             {"enabled": False, "model": None, "reason": "voice service not loaded"},
@@ -1212,6 +1213,18 @@ router = APIRouter(tags=["heatguard"])
 
 
 # ---------------------------------------------------------------- dashboard API
+def heat_thresholds():
+    """Band temperature tiers in die °C (env-tunable) plus the air estimate offset."""
+    return {"chip_offset": CHIP_OFFSET, "chip_stop": CHIP_STOP, "chip_call": CHIP_CALL,
+            "air_stop": CHIP_STOP - CHIP_OFFSET, "air_call": CHIP_CALL - CHIP_OFFSET,
+            "sustain_s": TEMP_SUSTAIN_S}
+
+
+@router.get("/api/v1/heat")
+async def get_heat_thresholds():
+    return heat_thresholds()
+
+
 @router.get("/api/v1/state")
 async def get_state():
     return core.state()

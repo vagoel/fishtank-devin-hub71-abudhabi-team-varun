@@ -85,7 +85,8 @@ CHIP_CALL = float(os.environ.get("HEATGUARD_CHIP_CALL", "80"))    # ≈45 °C ai
 TEMP_SUSTAIN_S = float(os.environ.get("HEATGUARD_TEMP_SUSTAIN_S", "8"))
 # A fall / heat-stroke alarm asks the worker "are you OK?" for 15 s on the band. Only call
 # when they did not answer: wait this long for worker_ok / cancelled before escalating.
-# SOS and voice "help me" are explicit requests and still escalate at once.
+# The SOS button gets the same window (the band shows "A = cancel"); a spoken "help me" to the
+# voice assistant is an explicit request and still escalates at once.
 ESCALATE_GRACE_S = float(os.environ.get("HEATGUARD_ESCALATE_GRACE_S", "20"))
 RING_S = 60
 
@@ -659,7 +660,8 @@ class Core:
                                 (d.get("rms_dps", 0), d.get("dur_s", 0))),
             "inactivity": lambda: ("warning", "No movement for %d min during a work cycle. Asking the worker." %
                                    max(1, round(d.get("still_s", 0) / 60))),
-            "sos": lambda: ("critical", "Worker held the SOS button on the wearable."),
+            "sos": lambda: ("critical", "Worker held the SOS button on the wearable. Calling in %d s unless "
+                                        "they cancel with A." % ESCALATE_GRACE_S),
             "unwell": lambda: ("warning", "Worker reported feeling unwell. Cool-down started."),
         }.get(base)
         if not msg:
@@ -670,7 +672,7 @@ class Core:
         if base in WINDOW_TYPES and t is not None:
             self.spawn(self.capture_window(a, w, int(t)))
         if base == "sos":
-            self.escalate(a)
+            self.escalate_after_grace(a, w)   # the band offers "A = cancel" first
         elif base == "unwell":
             self.cmd_rest(w, 30, "Reported unwell")
         elif base in ("tremor", "erratic"):
@@ -790,8 +792,8 @@ class Core:
         escalated = []
         if sev == "critical" and status not in INCIDENT_CLOSED and not (prev or {}).get("escalated") \
                 and not a.get("_escalated_once"):
-            if inc["type"] == "manual_sos" or status == "no_response":
-                escalated = self.escalate(a)          # asked for help, or did not answer: call now
+            if status == "no_response" or (inc["type"] == "manual_sos" and inc.get("source") == "voice"):
+                escalated = self.escalate(a)          # did not answer, or asked for help by voice: call now
             else:
                 self.escalate_after_grace(a, w)       # give the worker the 15 s "are you OK?" first
         return {"alert_id": a["id"], "escalated": escalated}

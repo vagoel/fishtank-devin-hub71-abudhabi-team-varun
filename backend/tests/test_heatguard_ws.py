@@ -389,9 +389,19 @@ def test_suspected_fall_waits_for_the_worker_before_calling(client, monkeypatch)
                       and client.get(f"/v1/incidents/{dev}-b1-2").json())
     assert stored["status"] == "no_response"
 
-    # an explicit SOS still calls at once
+    # the SOS button waits too, and A (cancelled) within the window means no call
+    before = len(caller.calls)
     r3 = client.post("/v1/incidents", json=dict(base, incident_id=f"{dev}-b1-3", type="manual_sos"))
-    assert "call" in r3.json()["escalated"]
+    assert r3.json()["escalated"] == []
+    client.post("/v1/incidents", json=dict(base, incident_id=f"{dev}-b1-3", type="manual_sos",
+                                           status="cancelled"))
+    time.sleep(1.0)
+    assert len(caller.calls) == before
+
+    # a spoken "help me" to the voice assistant still calls at once
+    r4 = client.post("/v1/incidents", json=dict(base, incident_id=f"{dev}-b1-4", type="manual_sos",
+                                                source="voice"))
+    assert "call" in r4.json()["escalated"]
 
 
 def test_admin_clear_resolves_open_incidents_and_alerts(client, monkeypatch):

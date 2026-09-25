@@ -98,7 +98,7 @@ HEAT_EMA = 0.3              # smoothing per 1 s sample
 HEAT_SUSTAIN_S = 8
 HEAT_STOP_C = 64.0          # stop work (incident heat_stroke, warning) ...
 HEAT_STOP_CLEAR_C = 62.0    # ... until below this
-HEAT_CALL_C = 66.0          # heat stroke risk, help called (heat_stroke, critical) ...
+HEAT_CALL_C = 66.0          # heat stroke: "are you OK?" prompt (heat_stroke, critical) ...
 HEAT_CALL_CLEAR_C = 63.0    # ... until below this
 P.update({"CHIP_STOP": HEAT_STOP_C, "CHIP_STOP_CLEAR": HEAT_STOP_CLEAR_C,
           "CHIP_CALL": HEAT_CALL_C, "CHIP_CALL_CLEAR": HEAT_CALL_CLEAR_C})
@@ -393,12 +393,14 @@ def hello():
 # it. incident_id = <device_id>-<boot_id>-<event seq>; the answer to the
 # "are you OK?" prompt re-POSTs the same id with a new status.
 INC_TYPE = {"fall": "fall", "sos": "manual_sos", "tremor": "tremor", "erratic": "tremor",
-            "inactivity": "inactivity", "unwell": "unwell", "impact": "impact"}
+            "inactivity": "inactivity", "unwell": "unwell", "impact": "impact",
+            "heat_stroke": "heat_stroke"}
+INC_SEV = {"heat_stroke": "critical"}
 INC_STATUS = {"ok": "worker_ok", "noresp": "no_response", "cancel": "cancelled"}
-HEAT_KINDS = {"heat_stop": (1, "warning"), "heat_call": (2, "critical")}
+HEAT_KINDS = {"heat_stop": (1, "warning")}      # the heat_stroke tier is a prompt (INC_TYPE)
 tx_inc = []                 # [incident_id, JSON body], shared with the network thread
-inc_cur = None              # [id, type, read_time_us, details, event, severity] of the alarm on screen
-heat_rec = [None, None, None]   # open heat_stroke incident per heat level
+inc_cur = None              # [id, type, read_time_us, details, event, severity, status] of the alarm on screen
+heat_rec = [None, None, None]   # open heat_stroke incident per heat tier
 inc_at = 0                  # next POST attempt (ticks_ms); the network thread reads it
 hg_person = ""              # ',"person":{...}' from NVS hg_worker, else the backend fills it
 
@@ -409,20 +411,29 @@ def inc_event(kind, seq, parts):
         iid = "%s-%s-%d" % (dev_id, boot_id, seq)
         det = '"event":%s%s%s' % (jstr(kind), "," if parts else "", parts)
         if kind in INC_TYPE:
-            rec = [iid, INC_TYPE[kind], t_mono, det, kind, ""]
+            rec = [iid, INC_TYPE[kind], t_mono, det, kind, INC_SEV.get(kind, ""), ""]
+            if kind == "heat_stroke":
+                heat_rec[2] = rec
             # the alarm that owns the screen gets the worker's answer
             if kind == "sos" or (kind != "impact" and ui not in ("prompt", "escalated", "sos")):
                 inc_cur = rec
             inc_put(rec, "suspected")
         elif kind in HEAT_KINDS:
             lvl, sev = HEAT_KINDS[kind]
-            heat_rec[lvl] = [iid, "heat_stroke", t_mono, det, kind, sev]
+            heat_rec[lvl] = [iid, "heat_stroke", t_mono, det, kind, sev, ""]
             inc_put(heat_rec[lvl], "suspected")
         elif kind.endswith("_clear") and kind[:-6] in HEAT_KINDS:
             lvl = HEAT_KINDS[kind[:-6]][0]
             if heat_rec[lvl] is not None:
                 inc_put(heat_rec[lvl], "resolved")
                 heat_rec[lvl] = None
+        elif kind == "heat_stroke_clear":
+            # cooler again: close it only if the worker said OK; an unanswered
+            # one stays with the supervisor
+            r = heat_rec[2]
+            if r is not None and r[6] == "worker_ok":
+                inc_put(r, "resolved")
+            heat_rec[2] = None
         elif "_" in kind and inc_cur is not None:
             base, what = kind.rsplit("_", 1)
             st = INC_STATUS.get(what)
@@ -437,6 +448,7 @@ def inc_event(kind, seq, parts):
 def inc_put(rec, status):
     """Queue (or update in place) one incident for the network thread."""
     global inc_at
+    rec[6] = status
     body = ('{"schema":"heatguard.incident.v1","incident_id":"%s","device_id":"%s","type":"%s",'
             '"status":"%s",%s"boot_id":"%s","read_time_us":%d,"details":{%s},"source":"device"%s}'
             % (rec[0], dev_id, rec[1], status, ('"severity":"%s",' % rec[5]) if rec[5] else "",
@@ -2534,7 +2546,7 @@ def draw_voice(now):
 
 
 PROMPT_TITLE = {"fall": "FALL?", "tremor": "SHAKING", "erratic": "MOVEMENT",
-                "inactivity": "NO MOVE", "unwell": "UNWELL"}
+                "inactivity": "NO MOVE", "unwell": "UNWELL", "heat_stroke": "HEAT STROKE?"}
 
 
 def draw_overlay(now):
@@ -2544,7 +2556,8 @@ def draw_overlay(now):
         if ui_kind in ("tremor", "erratic", "inactivity"):
             bg = AMBER if flash else 0x78350F
         cv.fillScreen(bg)
-        text_c(PROMPT_TITLE.get(ui_kind, ui_kind.upper()), 22, WHITE, bg, "Montserrat24")
+        title = PROMPT_TITLE.get(ui_kind, ui_kind.upper())
+        text_c(title, 22, WHITE, bg, "Montserrat24" if len(title) <= 8 else "Montserrat18")
         text_c("Are you OK?", 60, WHITE, bg, "Montserrat16")
         left = max(0, time.ticks_diff(ui_until, now)) // 1000 + 1
         text_c(str(left), 92, WHITE, bg, "DejaVu56")
@@ -2559,16 +2572,6 @@ def draw_overlay(now):
             text_c(ln, y, WHITE, RED, "Montserrat14")
             y += 20
         text_c("A = cancel", 216, 0xFECACA, RED, "Montserrat12")
-    elif ui == "heat":
-        cv.fillScreen(RED)
-        text_c("EXTREME", 26, WHITE, RED, "Montserrat24")
-        text_c("HEAT", 58, WHITE, RED, "Montserrat24")
-        text_c("air ~%.0f C" % ((heat_ema or chip_t) - HEAT_OFFSET_C), 88, 0xFECACA, RED, "Montserrat12")
-        y = 104
-        for ln in wrap("Help is on the way. Stop work, get to shade, drink water.", 14)[:5]:
-            text_c(ln, y, WHITE, RED, "Montserrat14")
-            y += 20
-        text_c("A = OK", 216, 0xFECACA, RED, "Montserrat12")
     elif ui == "ack":
         cv.fillScreen(BLUE)
         text_c("HELP", 30, WHITE, BLUE, "Montserrat24")
@@ -2654,12 +2657,15 @@ def click_a():
     elif ui == "prompt":
         ev(ui_kind + "_ok")
         ui = "normal"           # banner() will not replace a prompt; without this it escalates anyway
-        banner("THANKS", "Glad you're OK. Stay hydrated.", GREEN, 2500)
+        if ui_kind == "heat_stroke":
+            banner("COOL DOWN", "Rest in the shade and drink water now.", CYAN, 8000)
+        else:
+            banner("THANKS", "Glad you're OK. Stay hydrated.", GREEN, 2500)
         still_ms = 0
     elif ui in ("escalated", "sos"):
         ev((ui_kind or "sos") + "_cancel")
         set_ui("normal")
-    elif ui in ("ack", "msg", "banner", "heat"):
+    elif ui in ("ack", "msg", "banner"):
         set_ui("normal")
 
 
@@ -2725,7 +2731,7 @@ def frames_init():
 
 # ---------------------------------------------------------------- heat tiers
 HEAT_TIERS = ((1, "CHIP_STOP", "CHIP_STOP_CLEAR", "heat_stop", "stop_work"),
-              (2, "CHIP_CALL", "CHIP_CALL_CLEAR", "heat_call", "call"))
+              (2, "CHIP_CALL", "CHIP_CALL_CLEAR", "heat_stroke", "call"))
 
 
 def heat_step(die):
@@ -2740,13 +2746,17 @@ def heat_step(die):
             if heat_run[lvl] >= HEAT_SUSTAIN_S:
                 heat_on[lvl] = True
                 heat_run[lvl] = 0
-                ev(kind, level=level, die_c=t, air_c=t - HEAT_OFFSET_C)   # incident first
-                heat_alarm(lvl)
+                if lvl == 1:
+                    ev(kind, level=level, die_c=t, air_c=t - HEAT_OFFSET_C)   # incident first
+                    heat_alarm()
+                else:
+                    # like a fall: ask first. The event and the incident (suspected)
+                    # go now; A -> heat_stroke_ok / worker_ok, no answer in
+                    # PROMPT_S -> heat_stroke_noresp / no_response and ALERT SENT
+                    prompt(kind, level=level, die_c=t, air_c=t - HEAT_OFFSET_C)
         elif t < off_c:
             heat_on[lvl] = False
             ev(kind + "_clear", level=level, die_c=t, air_c=t - HEAT_OFFSET_C)
-            if lvl == 2 and ui == "heat":
-                set_ui("normal")
             if lvl == 1:
                 banner("HEAT OK", "Cooler now. Back to normal.", GREEN, 4000)
                 buzz(1)
@@ -2769,20 +2779,11 @@ def heat_cfg(c):
             pass
 
 
-def heat_alarm(lvl):
-    global ui_kind
-    if lvl == 1:
-        banner("STOP WORK", "Too hot. Rest in the shade and drink water.", RED, 8000)
-        buzz(3, 300, 150)
-        beep(2600, 250)
-        return
-    if ui not in ("prompt", "escalated", "sos"):
-        if v_state:
-            voice_stop()
-        set_ui("heat")
-        ui_kind = "heat"
-    buzz(4, 400, 150)
-    beep(3200, 500)
+def heat_alarm():
+    """Stop-work tier: a warning, no prompt."""
+    banner("STOP WORK", "Too hot. Rest in the shade and drink water.", RED, 8000)
+    buzz(3, 300, 150)
+    beep(2600, 250)
 
 
 # ---------------------------------------------------------------- main
